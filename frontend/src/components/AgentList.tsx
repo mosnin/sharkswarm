@@ -45,3 +45,6 @@ export default function AgentList({ agents }: { agents: Agent[] }) {
     </div>
   );
 }
+
+// Named export for compatibility
+export { AgentList };

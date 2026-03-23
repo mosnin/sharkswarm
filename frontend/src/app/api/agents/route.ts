@@ -1,9 +1,5 @@
 import { NextResponse } from "next/server";
-
-const AGENTS = [
-  { id: "agent-1", name: "Agent Alpha", internalUrl: process.env.AGENT_1_URL || "http://openclaw-agent-1:18789" },
-  { id: "agent-2", name: "Agent Bravo", internalUrl: process.env.AGENT_2_URL || "http://openclaw-agent-2:18789" },
-];
+import { AGENTS } from "@/lib/agents";
 
 async function checkHealth(url: string): Promise<boolean> {
   try {
@@ -24,7 +20,7 @@ export async function GET() {
       return {
         id: agent.id,
         name: agent.name,
-        url: agent.internalUrl,
+        url: agent.publicUrl,
         status: online ? "online" : "offline",
       };
     })

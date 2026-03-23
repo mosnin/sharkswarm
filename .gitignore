@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Next.js
+frontend/.next/
+frontend/out/
+
+# Environment files with secrets
+backend/.env
+backend/agent1/.env
+backend/agent2/.env
+
+# Cloned NanoClaw source (built by Docker)
+backend/nanoclaw/
+
+# Agent runtime data
+backend/agent*/workspace/
+backend/agent*/memory/
+
+# Docker volumes
+pgdata/
+redisdata/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc

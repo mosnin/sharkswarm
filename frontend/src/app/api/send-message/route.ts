@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Pool } from "pg";
-import Redis from "ioredis";
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const redis = new Redis(process.env.REDIS_URL || "redis://redis:6379");
+import { query } from "@/lib/db";
+import { publishToAgent } from "@/lib/redis";
 
 export async function POST(req: NextRequest) {
   const { toAgent, message } = await req.json();
@@ -16,16 +13,10 @@ export async function POST(req: NextRequest) {
   const channel = `agent:${toAgent}:inbox`;
 
   // Publish to Redis
-  const payload = JSON.stringify({
-    from: fromAgent,
-    to: toAgent,
-    content: message,
-    timestamp: new Date().toISOString(),
-  });
-  await redis.publish(channel, payload);
+  await publishToAgent(fromAgent, toAgent, message);
 
   // Log to Postgres
-  await pool.query(
+  await query(
     "INSERT INTO messages (from_agent, to_agent, channel, content) VALUES ($1, $2, $3, $4)",
     [fromAgent, toAgent, channel, message]
   );

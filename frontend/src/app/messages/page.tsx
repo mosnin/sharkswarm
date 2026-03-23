@@ -1,0 +1,90 @@
+"use client";
+
+import MessageForm from "@/components/MessageForm";
+import { useEffect, useState, useCallback } from "react";
+
+interface Agent {
+  id: string;
+  name: string;
+  url: string;
+  status: "online" | "offline";
+}
+
+interface Message {
+  id: number;
+  from_agent: string;
+  to_agent: string;
+  content: string;
+  created_at: string;
+}
+
+export default function MessagesPage() {
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+
+  const fetchAgents = useCallback(async () => {
+    try {
+      const res = await fetch("/api/agents");
+      const data = await res.json();
+      setAgents(data.agents);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const fetchMessages = useCallback(async () => {
+    try {
+      const res = await fetch("/api/logs");
+      const data = await res.json();
+      setMessages(data.logs);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAgents();
+    fetchMessages();
+    const interval = setInterval(fetchMessages, 5000);
+    return () => clearInterval(interval);
+  }, [fetchAgents, fetchMessages]);
+
+  const handleSend = async (toAgent: string, message: string) => {
+    await fetch("/api/send-message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ toAgent, message }),
+    });
+    await fetchMessages();
+  };
+
+  return (
+    <div>
+      <h1 style={{ fontSize: 24, marginBottom: 24 }}>Messages</h1>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+        <MessageForm agents={agents} onSend={handleSend} />
+        <div style={{ background: "var(--surface)", borderRadius: 8, border: "1px solid var(--border)", padding: 16 }}>
+          <h2 style={{ fontSize: 16, marginBottom: 12 }}>History</h2>
+          <div style={{ maxHeight: 400, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, fontFamily: "monospace", fontSize: 13 }}>
+            {messages.length === 0 && <p style={{ color: "var(--text-muted)" }}>No messages yet</p>}
+            {messages.map((m) => (
+              <div key={m.id} style={{ padding: "8px 10px", background: "var(--bg)", borderRadius: 4, border: "1px solid var(--border)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span>
+                    <span style={{ color: "var(--accent)" }}>{m.from_agent}</span>
+                    <span style={{ color: "var(--text-muted)" }}> → </span>
+                    <span style={{ color: "var(--green)" }}>{m.to_agent}</span>
+                  </span>
+                  <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
+                    {new Date(m.created_at).toLocaleString()}
+                  </span>
+                </div>
+                <div>{m.content}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

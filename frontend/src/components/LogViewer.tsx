@@ -2,19 +2,28 @@
 
 interface LogEntry {
   id: number;
-  from_agent: string;
-  to_agent: string;
-  content: string;
+  agent_id?: string;
+  from_agent?: string;
+  to_agent?: string;
+  level?: string;
+  message?: string;
+  content?: string;
   created_at: string;
 }
+
+const LEVEL_COLORS: Record<string, string> = {
+  info: "var(--accent)",
+  warn: "var(--yellow)",
+  error: "var(--red)",
+  debug: "var(--text-muted)",
+};
 
 export default function LogViewer({ logs }: { logs: LogEntry[] }) {
   return (
     <div style={{ background: "var(--surface)", borderRadius: 8, border: "1px solid var(--border)", padding: 16 }}>
-      <h2 style={{ fontSize: 16, marginBottom: 12 }}>Message Log</h2>
       <div
         style={{
-          maxHeight: 400,
+          maxHeight: 500,
           overflowY: "auto",
           display: "flex",
           flexDirection: "column",
@@ -23,7 +32,7 @@ export default function LogViewer({ logs }: { logs: LogEntry[] }) {
           fontSize: 13,
         }}
       >
-        {logs.length === 0 && <p style={{ color: "var(--text-muted)" }}>No messages yet</p>}
+        {logs.length === 0 && <p style={{ color: "var(--text-muted)" }}>No logs yet</p>}
         {logs.map((log) => (
           <div
             key={log.id}
@@ -35,16 +44,25 @@ export default function LogViewer({ logs }: { logs: LogEntry[] }) {
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-              <span>
-                <span style={{ color: "var(--accent)" }}>{log.from_agent}</span>
-                <span style={{ color: "var(--text-muted)" }}> → </span>
-                <span style={{ color: "var(--green)" }}>{log.to_agent}</span>
-              </span>
+              {log.from_agent && log.to_agent ? (
+                <span>
+                  <span style={{ color: "var(--accent)" }}>{log.from_agent}</span>
+                  <span style={{ color: "var(--text-muted)" }}> → </span>
+                  <span style={{ color: "var(--green)" }}>{log.to_agent}</span>
+                </span>
+              ) : (
+                <span>
+                  <span style={{ color: LEVEL_COLORS[log.level || "info"] || "var(--text-muted)" }}>
+                    [{log.level?.toUpperCase() || "INFO"}]
+                  </span>{" "}
+                  <span style={{ color: "var(--accent)" }}>{log.agent_id}</span>
+                </span>
+              )}
               <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
                 {new Date(log.created_at).toLocaleString()}
               </span>
             </div>
-            <div style={{ color: "var(--text)" }}>{log.content}</div>
+            <div style={{ color: "var(--text)" }}>{log.content || log.message}</div>
           </div>
         ))}
       </div>

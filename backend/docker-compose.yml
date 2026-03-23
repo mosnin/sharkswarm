@@ -1,0 +1,134 @@
+version: "3.9"
+
+services:
+  # ── Infrastructure ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nanoclaw-net
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nanoclaw}
+      POSTGRES_USER: ${POSTGRES_USER:-nanoclaw}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nanoclaw}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nanoclaw-net
+
+  # ── NanoClaw Agents ─────────────────────────────────────────────
+  nanoclaw-agent-1:
+    build:
+      context: ./nanoclaw
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./agent1:/app/agent-data
+    env_file:
+      - ./agent1/.env
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_API_KEY:-}
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nanoclaw}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-nanoclaw}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - nanoclaw-net
+
+  nanoclaw-agent-2:
+    build:
+      context: ./nanoclaw
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./agent2:/app/agent-data
+    env_file:
+      - ./agent2/.env
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_API_KEY:-}
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nanoclaw}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-nanoclaw}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - nanoclaw-net
+
+  # ── Redis ↔ Postgres Bridge ────────────────────────────────────
+  redis-bridge:
+    build: ./redis-pubsub
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nanoclaw}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-nanoclaw}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - nanoclaw-net
+
+  # ── Frontend ────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nanoclaw}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-nanoclaw}
+      NEXT_PUBLIC_AGENT_1_URL: http://localhost:3000
+      NEXT_PUBLIC_AGENT_2_URL: http://localhost:3001
+      # Internal Docker URLs (used server-side in API routes)
+      AGENT_1_INTERNAL_URL: http://nanoclaw-agent-1:3000
+      AGENT_2_INTERNAL_URL: http://nanoclaw-agent-2:3000
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - nanoclaw-net
+
+networks:
+  nanoclaw-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:

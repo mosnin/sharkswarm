@@ -73,7 +73,7 @@ export default function Home() {
 
   return (
     <main style={{ maxWidth: 1200, margin: "0 auto", padding: "24px" }}>
-      <h1 style={{ fontSize: 24, marginBottom: 24 }}>OpenClaw Dashboard</h1>
+      <h1 style={{ fontSize: 24, marginBottom: 24 }}>NanoClaw Dashboard</h1>
 
       <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 24 }}>
         <div>
