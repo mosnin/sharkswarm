@@ -20,6 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <a href="/tasks">Tasks</a>
               <a href="/messages">Messages</a>
               <a href="/integrations">Integrations</a>
+              <a href="/schedules">Schedules</a>
               <a href="/health">Health</a>
               <a href="/logs">Logs</a>
             </div>

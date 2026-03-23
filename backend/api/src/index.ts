@@ -432,6 +432,61 @@ app.delete("/api/agents/:id/integrations/:integrationId", (req, res) => {
   res.json({ success: true });
 });
 
+// --------------- Schedules ---------------
+
+app.get("/api/schedules", async (_req, res) => {
+  const rows = await query("SELECT * FROM schedules ORDER BY created_at DESC");
+  res.json(rows);
+});
+
+app.post("/api/schedules", async (req, res) => {
+  const { name, agent_id, cron_expr, message } = req.body;
+  if (!name || !agent_id || !cron_expr || !message) {
+    return res.status(400).json({ error: "name, agent_id, cron_expr, and message are required" });
+  }
+  const rows = await query(
+    `INSERT INTO schedules (name, agent_id, cron_expr, message) VALUES ($1, $2, $3, $4) RETURNING *`,
+    [name, agent_id, cron_expr, message]
+  );
+  res.status(201).json(rows[0]);
+});
+
+app.put("/api/schedules/:id", async (req, res) => {
+  const { name, agent_id, cron_expr, message, enabled } = req.body;
+  const rows = await query(
+    `UPDATE schedules
+     SET name      = COALESCE($1, name),
+         agent_id  = COALESCE($2, agent_id),
+         cron_expr = COALESCE($3, cron_expr),
+         message   = COALESCE($4, message),
+         enabled   = COALESCE($5, enabled)
+     WHERE id = $6 RETURNING *`,
+    [name ?? null, agent_id ?? null, cron_expr ?? null, message ?? null, enabled ?? null, req.params.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: "Schedule not found" });
+  res.json(rows[0]);
+});
+
+app.delete("/api/schedules/:id", async (req, res) => {
+  await query("DELETE FROM schedules WHERE id = $1", [req.params.id]);
+  res.json({ success: true });
+});
+
+// Run a schedule immediately (manual trigger)
+app.post("/api/schedules/:id/run", async (req, res) => {
+  const rows = await query("SELECT * FROM schedules WHERE id = $1", [req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: "Schedule not found" });
+  const schedule = rows[0] as { agent_id: string; message: string; name: string; id: number };
+
+  await publishToAgent("scheduler", schedule.agent_id, schedule.message);
+  await query("UPDATE schedules SET last_run = NOW() WHERE id = $1", [schedule.id]);
+  await query(
+    "INSERT INTO agent_logs (agent_id, level, message) VALUES ($1, $2, $3)",
+    ["scheduler", "info", `Manual trigger: "${schedule.name}" → ${schedule.agent_id}`]
+  );
+  res.json({ success: true });
+});
+
 // --------------- Start ---------------
 
 initAgentRegistry()
