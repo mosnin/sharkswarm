@@ -42,7 +42,7 @@ app.get("/api/agents", async (_req, res) => {
       try {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 2000);
-        const r = await fetch(`${agent.internalUrl}/api/health`, {
+        const r = await fetch(`${agent.internalUrl}/healthz`, {
           signal: ctrl.signal,
         });
         clearTimeout(timer);
@@ -279,7 +279,7 @@ app.get("/api/health/system", async (_req, res) => {
       try {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 3000);
-        const r = await fetch(`${agent.internalUrl}/api/health`, {
+        const r = await fetch(`${agent.internalUrl}/healthz`, {
           signal: ctrl.signal,
         });
         clearTimeout(timer);

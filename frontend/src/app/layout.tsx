@@ -5,7 +5,7 @@ import NavThemeToggle from "@/components/NavThemeToggle";
 
 export const metadata: Metadata = {
   title: "SharkSwarm Dashboard",
-  description: "Multi-agent NanoClaw management dashboard",
+  description: "Multi-agent OpenClaw management dashboard",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
