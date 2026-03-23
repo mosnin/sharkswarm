@@ -23,7 +23,7 @@ export async function initAgentRegistry() {
       id           VARCHAR(64)  PRIMARY KEY,
       name         VARCHAR(128) NOT NULL,
       system_prompt TEXT        NOT NULL DEFAULT '',
-      model        VARCHAR(64)  NOT NULL DEFAULT 'claude-sonnet-4-20250514',
+      model        VARCHAR(64)  NOT NULL DEFAULT 'openai/gpt-4o-mini',
       tools        TEXT[]       NOT NULL DEFAULT '{}',
       container_id VARCHAR(128),
       created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
@@ -35,8 +35,8 @@ export async function initAgentRegistry() {
   if (existing.length === 0) {
     await query(`
       INSERT INTO agent_registry (id, name, system_prompt, model, tools) VALUES
-      ('agent-1', 'Agent Alpha', 'You are Agent Alpha, a general-purpose assistant in the SharkSwarm multi-agent system.', 'claude-sonnet-4-20250514', ARRAY['web_search','code_execution']),
-      ('agent-2', 'Agent Beta',  'You are Agent Beta, a specialist assistant in the SharkSwarm multi-agent system.',        'claude-sonnet-4-20250514', ARRAY['web_search','file_read'])
+      ('agent-1', 'Agent Alpha', 'You are Agent Alpha, a general-purpose assistant in the SharkSwarm multi-agent system.', 'openai/gpt-4o-mini', ARRAY['web_search','code_execution']),
+      ('agent-2', 'Agent Beta',  'You are Agent Beta, a specialist assistant in the SharkSwarm multi-agent system.',        'openai/gpt-4o-mini', ARRAY['web_search','file_read'])
       ON CONFLICT DO NOTHING
     `);
   }
@@ -62,19 +62,18 @@ export async function createAgent(fields: {
   const id = `agent-${Date.now()}`;
   const containerName = `sharkswarm-agent-${id}`;
 
-  // Start Docker container (NanoClaw instance)
+  // Start Docker container (OpenClaw instance with OpenAI provider)
   const container = await docker.createContainer({
     Image: AGENT_IMAGE,
     name: containerName,
     Env: [
-      `AGENT_ID=${id}`,
-      `AGENT_NAME=${fields.name}`,
-      `ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY || ""}`,
-      `ANTHROPIC_AUTH_TOKEN=${process.env.ANTHROPIC_API_KEY || ""}`,
-      `ANTHROPIC_BASE_URL=https://api.anthropic.com`,
+      `HOME=/home/node`,
+      `OPENAI_API_KEY=${process.env.OPENAI_API_KEY || ""}`,
+      `OPENCLAW_GATEWAY_BIND=lan`,
       `REDIS_URL=${process.env.REDIS_URL || "redis://redis:6379"}`,
       `DATABASE_URL=${process.env.DATABASE_URL || ""}`,
     ],
+    ExposedPorts: { "18789/tcp": {} },
     HostConfig: {
       NetworkMode: NETWORK,
       RestartPolicy: { Name: "unless-stopped" as const },
@@ -154,15 +153,15 @@ function rowToConfig(row: AgentRow): AgentConfig {
   // Built-in agents use compose service names; dynamic agents use container names
   const isBuiltIn = id === "agent-1" || id === "agent-2";
   const serviceMap: Record<string, string> = {
-    "agent-1": "nanoclaw-agent-1",
-    "agent-2": "nanoclaw-agent-2",
+    "agent-1": "openclaw-agent-1",
+    "agent-2": "openclaw-agent-2",
   };
   const hostname = isBuiltIn ? serviceMap[id] : `sharkswarm-agent-${id}`;
 
   return {
     id,
     name: row.name,
-    internalUrl: `http://${hostname}:3000`,
+    internalUrl: `http://${hostname}:18789`,
     publicUrl: "",
     systemPrompt: row.system_prompt || "",
     model: row.model,

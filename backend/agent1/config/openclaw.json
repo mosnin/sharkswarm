@@ -1,0 +1,56 @@
+{
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "openai": {
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKey": "${OPENAI_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "gpt-4o-mini",
+            "name": "GPT-4o Mini",
+            "reasoning": false,
+            "input": ["text", "image"],
+            "cost": { "input": 0.15, "output": 0.6, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 128000,
+            "maxTokens": 16384
+          },
+          {
+            "id": "gpt-4o",
+            "name": "GPT-4o",
+            "reasoning": false,
+            "input": ["text", "image"],
+            "cost": { "input": 2.5, "output": 10, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 128000,
+            "maxTokens": 16384
+          },
+          {
+            "id": "gpt-4.1",
+            "name": "GPT-4.1",
+            "reasoning": false,
+            "input": ["text", "image"],
+            "cost": { "input": 2, "output": 8, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 1048576,
+            "maxTokens": 32768
+          },
+          {
+            "id": "gpt-4.1-mini",
+            "name": "GPT-4.1 Mini",
+            "reasoning": false,
+            "input": ["text", "image"],
+            "cost": { "input": 0.4, "output": 1.6, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 1048576,
+            "maxTokens": 32768
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": { "primary": "openai/gpt-4o-mini" },
+      "name": "Agent Alpha"
+    }
+  }
+}

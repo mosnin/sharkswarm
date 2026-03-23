@@ -10,9 +10,9 @@ info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NANOCLAW_REPO="https://github.com/qwibitai/nanoclaw.git"
+OPENCLAW_REPO="https://github.com/openclaw/openclaw.git"
 
-info "NanoClaw Multi-Agent Setup"
+info "OpenClaw Multi-Agent Setup"
 info "Working directory: ${SCRIPT_DIR}"
 echo
 
@@ -37,10 +37,10 @@ fi
 
 # ── 3. Clone NanoClaw repo if not present ─────────────────────────
 if [ ! -d "${SCRIPT_DIR}/backend/nanoclaw" ]; then
-  info "Cloning NanoClaw from ${NANOCLAW_REPO}..."
-  git clone "${NANOCLAW_REPO}" "${SCRIPT_DIR}/backend/nanoclaw"
+  info "Cloning OpenClaw from ${OPENCLAW_REPO}..."
+  git clone "${OPENCLAW_REPO}" "${SCRIPT_DIR}/backend/nanoclaw"
 else
-  info "NanoClaw repo already cloned, pulling latest..."
+  info "OpenClaw repo already cloned, pulling latest..."
   cd "${SCRIPT_DIR}/backend/nanoclaw" && git pull && cd "${SCRIPT_DIR}"
 fi
 
@@ -72,13 +72,14 @@ info "Stack is starting up! Container status:"
 docker compose ps
 echo
 info "Access points:"
-info "  Agent Alpha:  http://localhost:3000"
-info "  Agent Beta:   http://localhost:3001"
-info "  Dashboard:    http://localhost:3002"
-info "  Postgres:     localhost:5432"
-info "  Redis:        localhost:6379"
+info "  Agent Alpha (OpenClaw):  http://localhost:3000"
+info "  Agent Beta  (OpenClaw):  http://localhost:3001"
+info "  Dashboard:               http://localhost:3002"
+info "  API Gateway:             http://localhost:4000"
+info "  Postgres:                localhost:5432"
+info "  Redis:                   localhost:6379"
 echo
 info "Useful commands:"
 info "  cd backend && docker compose logs -f                    # Follow all logs"
-info "  cd backend && docker compose logs -f nanoclaw-agent-1   # Agent 1 logs"
+info "  cd backend && docker compose logs -f openclaw-agent-1   # Agent 1 logs"
 info "  cd backend && docker compose down                       # Stop the stack"
