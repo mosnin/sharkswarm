@@ -86,13 +86,7 @@ app.post("/api/send-message", async (req, res) => {
 
   try {
     await publishToAgent("dashboard", to_agent, message);
-
-    await query(
-      `INSERT INTO messages (from_agent, to_agent, channel, content)
-       VALUES ($1, $2, $3, $4)`,
-      ["dashboard", to_agent, `agent:${to_agent}:inbox`, message]
-    );
-
+    // redis-bridge persists the message to Postgres — no need to insert here too
     res.json({ success: true });
   } catch (err) {
     console.error("send-message error:", err);
