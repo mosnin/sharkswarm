@@ -98,11 +98,8 @@ async function handleMessage(payload) {
     await log("error", reply);
   }
 
-  // Persist the reply as a message from this agent back to the sender
+  // Publish reply — redis-bridge will persist it to Postgres automatically
   const replyChannel = `agent:${from_agent}:inbox`;
-  await persistMessage(AGENT_ID, from_agent, replyChannel, reply);
-
-  // Publish reply back so the sender (or dashboard) can receive it
   await publisher.publish(
     replyChannel,
     JSON.stringify({ from_agent: AGENT_ID, to_agent: from_agent, message: reply })
