@@ -3,8 +3,9 @@
 interface Agent {
   id: string;
   name: string;
-  url: string;
   status: "online" | "offline";
+  model?: string;
+  tools?: string[];
 }
 
 export default function AgentList({ agents }: { agents: Agent[] }) {
@@ -35,9 +36,15 @@ export default function AgentList({ agents }: { agents: Agent[] }) {
                 flexShrink: 0,
               }}
             />
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>{agent.name}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{agent.name}</div>
+                <a href={`/agents/${agent.id}`} style={{ fontSize: 12 }}>Config</a>
+              </div>
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{agent.id}</div>
+              {agent.model && (
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{agent.model}</div>
+              )}
             </div>
           </li>
         ))}
@@ -45,6 +52,3 @@ export default function AgentList({ agents }: { agents: Agent[] }) {
     </div>
   );
 }
-
-// Named export for compatibility
-export { AgentList };

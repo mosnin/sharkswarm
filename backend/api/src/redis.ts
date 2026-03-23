@@ -1,0 +1,17 @@
+import Redis from "ioredis";
+
+export const redis = new Redis(process.env.REDIS_URL || "redis://redis:6379");
+
+export async function publishToAgent(
+  fromAgent: string,
+  toAgent: string,
+  content: string
+) {
+  const payload = JSON.stringify({
+    from: fromAgent,
+    to: toAgent,
+    content,
+    timestamp: new Date().toISOString(),
+  });
+  await redis.publish(`agent:${toAgent}:inbox`, payload);
+}

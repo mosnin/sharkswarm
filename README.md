@@ -5,69 +5,79 @@ Run multiple [NanoClaw](https://github.com/qwibitai/nanoclaw) AI agents on a sin
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                   Docker Network                     │
-│                  (nanoclaw-net)                       │
-│                                                      │
-│  ┌─────────────┐  ┌─────────────┐                    │
-│  │  Agent Alpha │  │  Agent Beta │   ← NanoClaw      │
-│  │  :3000       │  │  :3001      │     containers    │
-│  └──────┬───────┘  └──────┬──────┘                    │
-│         │    Redis pub/sub │                          │
-│         └────────┬─────────┘                          │
-│            ┌─────┴─────┐                              │
-│            │   Redis    │  ← message bus              │
-│            │   :6379    │                              │
-│            └───────────┘                              │
-│            ┌───────────┐                              │
-│            │  Postgres  │  ← tasks & logs             │
-│            │   :5432    │                              │
-│            └───────────┘                              │
-│         ┌──────────────┐                              │
-│         │ Redis Bridge  │  ← pub/sub → Postgres       │
-│         └──────────────┘                              │
-│            ┌───────────┐                              │
-│            │  Frontend  │  ← Next.js dashboard        │
-│            │   :3002    │                              │
-│            └───────────┘                              │
-└──────────────────────────────────────────────────────┘
+  Vercel                          Hetzner VM
+┌──────────┐   HTTPS/REST    ┌────────────────────────────────────┐
+│ Frontend │  ──────────────→ │  API Gateway  :4000                │
+│ (Next.js)│                  │       │                            │
+└──────────┘                  │  ┌────┴────┐                       │
+                              │  │  Redis   │  ← message bus       │
+                              │  │  :6379   │                       │
+                              │  └────┬────┘                       │
+                              │       │                            │
+                              │  ┌────┴──────┐  ┌──────────────┐   │
+                              │  │Agent Alpha│  │  Agent Beta  │   │
+                              │  │  :3000    │  │  :3001       │   │
+                              │  └───────────┘  └──────────────┘   │
+                              │                                    │
+                              │  ┌───────────┐  ┌──────────────┐   │
+                              │  │ Postgres  │  │ Redis Bridge │   │
+                              │  │  :5432    │  │              │   │
+                              │  └───────────┘  └──────────────┘   │
+                              └────────────────────────────────────┘
 ```
 
-## Quick Start
+## Quick Start (Self-Hosted — All on One VM)
 
 ```bash
-# 1. Clone this repo
+# 1. Clone and setup
 git clone <repo-url> && cd sharkswarm
+chmod +x setup.sh && ./setup.sh
 
-# 2. Run setup (installs Docker, clones NanoClaw, creates .env)
-chmod +x setup.sh
-./setup.sh
+# 2. Configure
+nano backend/.env    # Set ANTHROPIC_API_KEY
 
-# 3. Edit your API keys
-nano backend/.env
-
-# 4. Re-run setup to start the stack
-./setup.sh
+# 3. Start
+cd backend && docker compose up -d --build
 ```
 
-Or manually:
+Dashboard: `http://localhost:3002` | API: `http://localhost:4000`
+
+## Deployment: Vercel + Hetzner (Split)
+
+### Backend (Hetzner VM)
 
 ```bash
-cd backend
-cp .env.example .env
-# Edit .env with your API keys
-git clone https://github.com/qwibitai/nanoclaw.git
-docker compose up -d --build
+# On your Hetzner VM
+git clone <repo-url> && cd sharkswarm
+chmod +x setup.sh && ./setup.sh
+
+# Edit environment
+nano backend/.env
+# Set ANTHROPIC_API_KEY=sk-ant-...
+# Set CORS_ORIGIN=https://your-app.vercel.app
+
+cd backend && docker compose up -d --build
 ```
+
+The API gateway runs on port `4000`. Make sure your firewall allows inbound traffic on `:4000` (or put it behind a reverse proxy with TLS).
+
+### Frontend (Vercel)
+
+1. Import the repo in Vercel.
+2. Set **Root Directory** to `frontend/`.
+3. Add environment variable:
+   - `NEXT_PUBLIC_API_URL` = `https://your-hetzner-vm.example.com:4000`
+4. Deploy.
 
 ## Services
 
 | Service | Port | Description |
 |---------|------|-------------|
+| `api` | 4000 | API gateway (Express, CORS-enabled) |
 | `nanoclaw-agent-1` | 3000 | Agent Alpha (primary) |
 | `nanoclaw-agent-2` | 3001 | Agent Beta (secondary) |
-| `frontend` | 3002 | Web dashboard |
-| `redis-bridge` | — | Relays Redis pub/sub messages to Postgres |
+| `frontend` | 3002 | Web dashboard (optional in Docker) |
+| `redis-bridge` | — | Relays Redis pub/sub to Postgres |
 | `postgres` | 5432 | Tasks & message log DB |
 | `redis` | 6379 | Pub/sub message bus |
 
@@ -81,133 +91,93 @@ sharkswarm/
 │   ├── docs/framework/             # 15-phase SaaS build system
 │   └── src/                        # Marketing site template (Next.js)
 ├── backend/                        # Runs on the Hetzner VM
-│   ├── docker-compose.yml          # Service definitions
+│   ├── docker-compose.yml          # All services
 │   ├── .env.example                # Environment template
+│   ├── api/                        # Express API gateway
+│   │   ├── Dockerfile
+│   │   ├── package.json
+│   │   └── src/
+│   │       ├── index.ts            # Routes & CORS
+│   │       ├── agents.ts           # Agent config registry
+│   │       ├── db.ts               # Postgres pool
+│   │       └── redis.ts            # Redis pub/sub
 │   ├── nanoclaw/                   # Cloned NanoClaw repo (git ignored)
 │   ├── agent1/
 │   │   ├── .env                    # Agent-specific config
-│   │   └── CLAUDE.md               # Agent personality & instructions
+│   │   └── CLAUDE.md               # Agent personality
 │   ├── agent2/
 │   │   ├── .env
 │   │   └── CLAUDE.md
-│   ├── redis-pubsub/
-│   │   ├── redis_pubsub.py         # Bridge daemon
-│   │   ├── requirements.txt
-│   │   └── Dockerfile
+│   ├── redis-pubsub/               # Bridge daemon
 │   └── postgres/
-│       └── schema.sql              # Auto-loaded on first boot
-├── frontend/                       # Next.js dashboard
-│   ├── Dockerfile
-│   ├── package.json
+│       └── schema.sql
+├── frontend/                       # Next.js dashboard (Vercel-deployable)
+│   ├── .env.example                # NEXT_PUBLIC_API_URL
+│   ├── Dockerfile                  # For self-hosted Docker
+│   ├── package.json                # No pg/ioredis — pure client
 │   └── src/
 │       ├── app/
-│       │   ├── page.tsx            # Agent list dashboard
+│       │   ├── page.tsx            # Dashboard home
+│       │   ├── agents/[id]/page.tsx # Agent config editor
 │       │   ├── messages/page.tsx   # Send & view messages
-│       │   ├── logs/page.tsx       # Agent activity logs
-│       │   └── api/                # API routes
-│       ├── components/             # React components
-│       └── lib/                    # DB, Redis, agent config
+│       │   └── logs/page.tsx       # Agent activity logs
+│       ├── components/
+│       │   ├── AgentList.tsx
+│       │   ├── MessageForm.tsx
+│       │   └── LogViewer.tsx
+│       └── lib/
+│           └── api.ts              # fetch() wrapper for API gateway
 └── shared/
     └── types.ts                    # Shared TypeScript types
 ```
 
+## API Endpoints
+
+All served by the API gateway on `:4000`:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/health` | Health check |
+| GET | `/api/agents` | List agents with status |
+| GET | `/api/agents/:id` | Get agent config |
+| PUT | `/api/agents/:id` | Update agent config |
+| POST | `/api/send-message` | Send message to agent |
+| GET | `/api/messages` | Recent messages |
+| GET | `/api/logs` | Agent logs |
+
 ## Inter-Agent Communication
 
-Three patterns are available:
-
 ### 1. Redis Pub/Sub (real-time)
-
-Channel pattern: `agent:{agentId}:inbox`
-
-The `redis-bridge` service listens to all agent channels and persists messages to Postgres automatically.
-
-```python
-# Example: publish from Python
-from redis_pubsub import publish
-publish("agent-1", "agent-2", "Hello from Alpha")
-```
+Channel pattern: `agent:{agentId}:inbox`. The `redis-bridge` persists messages to Postgres.
 
 ### 2. Postgres Tasks (persistent queue)
-
 ```sql
--- Create a task for agent-2
 INSERT INTO tasks (from_agent, to_agent, message)
 VALUES ('agent-1', 'agent-2', 'Analyze this data');
-
--- Agent-2 picks up pending tasks
-SELECT * FROM tasks WHERE to_agent = 'agent-2' AND status = 'pending';
-
--- Mark complete
-UPDATE tasks SET status = 'completed', result = 'Done', updated_at = NOW()
-WHERE id = 1;
 ```
 
 ### 3. Direct HTTP (synchronous)
-
-From within the Docker network, agents can call each other directly:
-
 ```bash
 curl http://nanoclaw-agent-2:3000/
 ```
 
 ## Adding a New Agent
 
-1. Create config directory:
-   ```bash
-   mkdir -p backend/agent3/{workspace,memory}
-   ```
-
-2. Create agent config files:
-   ```bash
-   cp backend/agent1/.env backend/agent3/.env
-   cp backend/agent1/CLAUDE.md backend/agent3/CLAUDE.md
-   # Edit AGENT_ID, AGENT_NAME, and peer references
-   ```
-
-3. Add service to `backend/docker-compose.yml`:
-   ```yaml
-   nanoclaw-agent-3:
-     build:
-       context: ./nanoclaw
-       dockerfile: Dockerfile
-     ports:
-       - "3003:3000"
-     volumes:
-       - ./agent3:/app/agent-data
-     env_file:
-       - ./agent3/.env
-     environment:
-       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-       REDIS_URL: redis://redis:6379
-       DATABASE_URL: postgresql://${POSTGRES_USER:-nanoclaw}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-nanoclaw}
-     networks:
-       - nanoclaw-net
-     depends_on:
-       redis: { condition: service_healthy }
-       postgres: { condition: service_healthy }
-     restart: unless-stopped
-   ```
-
-4. Add to frontend agent list in `frontend/src/lib/agents.ts`.
-
+1. Create config: `mkdir backend/agent3 && cp backend/agent1/.env backend/agent3/.env`
+2. Edit `AGENT_ID`, `AGENT_NAME` in the new `.env`
+3. Add service block to `backend/docker-compose.yml`
+4. Add entry to `backend/api/src/agents.ts`
 5. Restart: `cd backend && docker compose up -d --build`
 
 ## Common Commands
 
 ```bash
-# View logs
-cd backend && docker compose logs -f
-cd backend && docker compose logs -f nanoclaw-agent-1
+cd backend
 
-# Stop everything
-cd backend && docker compose down
-
-# Rebuild frontend after changes
-cd backend && docker compose up -d --build frontend
-
-# Check container status
-cd backend && docker compose ps
-
-# Connect to Postgres
-cd backend && docker compose exec postgres psql -U nanoclaw
+docker compose up -d --build     # Start everything
+docker compose logs -f           # All logs
+docker compose logs -f api       # API gateway logs
+docker compose down              # Stop
+docker compose ps                # Status
+docker compose exec postgres psql -U nanoclaw  # DB shell
 ```

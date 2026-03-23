@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { api } from "@/lib/api";
 import AgentList from "@/components/AgentList";
 import MessageForm from "@/components/MessageForm";
 import LogViewer from "@/components/LogViewer";
@@ -8,8 +9,9 @@ import LogViewer from "@/components/LogViewer";
 interface Agent {
   id: string;
   name: string;
-  url: string;
   status: "online" | "offline";
+  model: string;
+  tools: string[];
 }
 
 interface LogEntry {
@@ -27,9 +29,7 @@ export default function Home() {
 
   const fetchAgents = useCallback(async () => {
     try {
-      const res = await fetch("/api/agents");
-      const data = await res.json();
-      setAgents(data.agents);
+      setAgents(await api<Agent[]>("/api/agents"));
     } catch (err) {
       console.error("Failed to fetch agents:", err);
     }
@@ -37,9 +37,7 @@ export default function Home() {
 
   const fetchLogs = useCallback(async () => {
     try {
-      const res = await fetch("/api/logs");
-      const data = await res.json();
-      setLogs(data.logs);
+      setLogs(await api<LogEntry[]>("/api/messages"));
     } catch (err) {
       console.error("Failed to fetch logs:", err);
     }
@@ -55,10 +53,9 @@ export default function Home() {
   }, [fetchAgents, fetchLogs]);
 
   const handleSend = async (toAgent: string, message: string) => {
-    await fetch("/api/send-message", {
+    await api("/api/send-message", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ toAgent, message }),
+      body: JSON.stringify({ to_agent: toAgent, message }),
     });
     await fetchLogs();
   };

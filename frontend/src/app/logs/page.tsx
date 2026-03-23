@@ -2,6 +2,7 @@
 
 import LogViewer from "@/components/LogViewer";
 import { useEffect, useState, useCallback } from "react";
+import { api } from "@/lib/api";
 
 interface LogEntry {
   id: number;
@@ -16,8 +17,7 @@ export default function LogsPage() {
 
   const fetchLogs = useCallback(async () => {
     try {
-      const res = await fetch("/api/logs?type=agent_logs");
-      if (res.ok) setLogs(await res.json());
+      setLogs(await api<LogEntry[]>("/api/logs?type=agent_logs"));
     } catch {
       // ignore
     }

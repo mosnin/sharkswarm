@@ -2,11 +2,11 @@
 
 import MessageForm from "@/components/MessageForm";
 import { useEffect, useState, useCallback } from "react";
+import { api } from "@/lib/api";
 
 interface Agent {
   id: string;
   name: string;
-  url: string;
   status: "online" | "offline";
 }
 
@@ -24,9 +24,7 @@ export default function MessagesPage() {
 
   const fetchAgents = useCallback(async () => {
     try {
-      const res = await fetch("/api/agents");
-      const data = await res.json();
-      setAgents(data.agents);
+      setAgents(await api<Agent[]>("/api/agents"));
     } catch {
       // ignore
     }
@@ -34,9 +32,7 @@ export default function MessagesPage() {
 
   const fetchMessages = useCallback(async () => {
     try {
-      const res = await fetch("/api/logs");
-      const data = await res.json();
-      setMessages(data.logs);
+      setMessages(await api<Message[]>("/api/messages"));
     } catch {
       // ignore
     }
@@ -50,10 +46,9 @@ export default function MessagesPage() {
   }, [fetchAgents, fetchMessages]);
 
   const handleSend = async (toAgent: string, message: string) => {
-    await fetch("/api/send-message", {
+    await api("/api/send-message", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ toAgent, message }),
+      body: JSON.stringify({ to_agent: toAgent, message }),
     });
     await fetchMessages();
   };
