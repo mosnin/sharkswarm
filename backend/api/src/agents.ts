@@ -23,7 +23,7 @@ export async function initAgentRegistry() {
       id           VARCHAR(64)  PRIMARY KEY,
       name         VARCHAR(128) NOT NULL,
       system_prompt TEXT        NOT NULL DEFAULT '',
-      model        VARCHAR(64)  NOT NULL DEFAULT 'gpt-4o-mini',
+      model        VARCHAR(64)  NOT NULL DEFAULT 'claude-sonnet-4-20250514',
       tools        TEXT[]       NOT NULL DEFAULT '{}',
       container_id VARCHAR(128),
       created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
@@ -35,8 +35,8 @@ export async function initAgentRegistry() {
   if (existing.length === 0) {
     await query(`
       INSERT INTO agent_registry (id, name, system_prompt, model, tools) VALUES
-      ('agent-1', 'Agent Alpha', 'You are Agent Alpha, a general-purpose assistant in the SharkSwarm multi-agent system.', 'gpt-4o-mini', ARRAY['web_search','code_execution']),
-      ('agent-2', 'Agent Beta',  'You are Agent Beta, a specialist assistant in the SharkSwarm multi-agent system.',        'gpt-4o-mini', ARRAY['web_search','file_read'])
+      ('agent-1', 'Agent Alpha', 'You are Agent Alpha, a general-purpose assistant in the SharkSwarm multi-agent system.', 'claude-sonnet-4-20250514', ARRAY['web_search','code_execution']),
+      ('agent-2', 'Agent Beta',  'You are Agent Beta, a specialist assistant in the SharkSwarm multi-agent system.',        'claude-sonnet-4-20250514', ARRAY['web_search','file_read'])
       ON CONFLICT DO NOTHING
     `);
   }
@@ -62,16 +62,16 @@ export async function createAgent(fields: {
   const id = `agent-${Date.now()}`;
   const containerName = `sharkswarm-agent-${id}`;
 
-  // Start Docker container
+  // Start Docker container (NanoClaw instance)
   const container = await docker.createContainer({
     Image: AGENT_IMAGE,
     name: containerName,
     Env: [
       `AGENT_ID=${id}`,
       `AGENT_NAME=${fields.name}`,
-      `SYSTEM_PROMPT=${fields.systemPrompt}`,
-      `OPENAI_API_KEY=${process.env.OPENAI_API_KEY || ""}`,
-      `OPENAI_MODEL=${fields.model}`,
+      `ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY || ""}`,
+      `ANTHROPIC_AUTH_TOKEN=${process.env.ANTHROPIC_API_KEY || ""}`,
+      `ANTHROPIC_BASE_URL=https://api.anthropic.com`,
       `REDIS_URL=${process.env.REDIS_URL || "redis://redis:6379"}`,
       `DATABASE_URL=${process.env.DATABASE_URL || ""}`,
     ],

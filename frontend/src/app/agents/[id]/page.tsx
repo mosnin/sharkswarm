@@ -142,11 +142,9 @@ export default function AgentConfigPage() {
             value={config.model}
             onChange={(e) => setConfig({ ...config, model: e.target.value })}
           >
-            <option value="gpt-4o-mini">GPT-4o Mini (fast, cheap)</option>
-            <option value="gpt-4o">GPT-4o</option>
-            <option value="gpt-4.1">GPT-4.1</option>
-            <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
-            <option value="o4-mini">o4-mini (reasoning)</option>
+            <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+            <option value="claude-opus-4-20250514">Claude Opus 4</option>
+            <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
           </select>
         </label>
 

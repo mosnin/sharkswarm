@@ -13,11 +13,9 @@ interface Agent {
 }
 
 const MODELS = [
-  { value: "gpt-4o-mini", label: "GPT-4o Mini (fast, cheap)" },
-  { value: "gpt-4o", label: "GPT-4o" },
-  { value: "gpt-4.1", label: "GPT-4.1" },
-  { value: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
-  { value: "o4-mini", label: "o4-mini (reasoning)" },
+  { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
+  { value: "claude-opus-4-20250514", label: "Claude Opus 4" },
+  { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
 ];
 
 const labelStyle = { fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 } as const;
@@ -30,7 +28,7 @@ export default function Home() {
   const [newAgent, setNewAgent] = useState({
     name: "",
     systemPrompt: "",
-    model: "gpt-4o-mini",
+    model: "claude-sonnet-4-20250514",
   });
 
   const fetchAgents = useCallback(async () => {
@@ -61,7 +59,7 @@ export default function Home() {
           tools: [],
         }),
       });
-      setNewAgent({ name: "", systemPrompt: "", model: "gpt-4o-mini" });
+      setNewAgent({ name: "", systemPrompt: "", model: "claude-sonnet-4-20250514" });
       setShowCreate(false);
       await fetchAgents();
     } catch (err) {
