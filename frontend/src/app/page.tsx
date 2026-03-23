@@ -13,10 +13,11 @@ interface Agent {
 }
 
 const MODELS = [
-  { value: "openai/gpt-4o-mini", label: "GPT-4o Mini (fast, cheap)" },
-  { value: "openai/gpt-4o", label: "GPT-4o" },
   { value: "openai/gpt-4.1", label: "GPT-4.1" },
-  { value: "openai/gpt-4.1-mini", label: "GPT-4.1 Mini" },
+  { value: "openai/gpt-4.1-mini", label: "GPT-4.1 Mini (default)" },
+  { value: "openai/gpt-4.1-nano", label: "GPT-4.1 Nano (fast, cheap)" },
+  { value: "openai/o4-mini", label: "o4-mini (reasoning)" },
+  { value: "openai/o3", label: "o3 (reasoning)" },
 ];
 
 const labelStyle = { fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 } as const;
@@ -29,7 +30,7 @@ export default function Home() {
   const [newAgent, setNewAgent] = useState({
     name: "",
     systemPrompt: "",
-    model: "openai/gpt-4o-mini",
+    model: "openai/gpt-4.1-mini",
   });
 
   const fetchAgents = useCallback(async () => {
@@ -60,7 +61,7 @@ export default function Home() {
           tools: [],
         }),
       });
-      setNewAgent({ name: "", systemPrompt: "", model: "openai/gpt-4o-mini" });
+      setNewAgent({ name: "", systemPrompt: "", model: "openai/gpt-4.1-mini" });
       setShowCreate(false);
       await fetchAgents();
     } catch (err) {

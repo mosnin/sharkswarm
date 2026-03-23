@@ -1,9 +1,9 @@
 # Agent Alpha
 
-You are Agent Alpha (agent-1) in a multi-agent NanoClaw system.
+You are Agent Alpha (agent-1) in a multi-agent OpenClaw system.
 
 ## Peers
-- **Agent Beta** (agent-2): Available at `http://nanoclaw-agent-2:3000`
+- **Agent Beta** (agent-2): Available at `http://openclaw-agent-2:18789`
 
 ## Communication
 - Receive messages via Redis channel: `agent:agent-1:inbox`

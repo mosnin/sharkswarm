@@ -1,6 +1,6 @@
-# SharkSwarm — Multi-Agent NanoClaw on Docker
+# SharkSwarm — Multi-Agent OpenClaw on Docker
 
-Run multiple [NanoClaw](https://github.com/qwibitai/nanoclaw) AI agents on a single VM with inter-agent communication and a web dashboard.
+Run multiple [OpenClaw](https://github.com/openclaw/openclaw) AI agents on a single VM with inter-agent communication and a web dashboard. Powered by OpenAI (GPT-4.1, o4-mini, o3).
 
 ## Architecture
 
@@ -34,7 +34,7 @@ git clone <repo-url> && cd sharkswarm
 chmod +x setup.sh && ./setup.sh
 
 # 2. Configure
-nano backend/.env    # Set ANTHROPIC_API_KEY
+nano backend/.env    # Set OPENAI_API_KEY
 
 # 3. Start
 cd backend && docker compose up -d --build
@@ -53,7 +53,7 @@ chmod +x setup.sh && ./setup.sh
 
 # Edit environment
 nano backend/.env
-# Set ANTHROPIC_API_KEY=sk-ant-...
+# Set OPENAI_API_KEY=sk-...
 # Set CORS_ORIGIN=https://your-app.vercel.app
 
 cd backend && docker compose up -d --build
@@ -74,10 +74,11 @@ The API gateway runs on port `4000`. Make sure your firewall allows inbound traf
 | Service | Port | Description |
 |---------|------|-------------|
 | `api` | 4000 | API gateway (Express, CORS-enabled) |
-| `nanoclaw-agent-1` | 3000 | Agent Alpha (primary) |
-| `nanoclaw-agent-2` | 3001 | Agent Beta (secondary) |
+| `openclaw-agent-1` | 3000 | Agent Alpha — OpenClaw gateway |
+| `openclaw-agent-2` | 3001 | Agent Beta — OpenClaw gateway |
 | `frontend` | 3002 | Web dashboard (optional in Docker) |
 | `redis-bridge` | — | Relays Redis pub/sub to Postgres |
+| `scheduler` | — | Cron scheduler for recurring tasks |
 | `postgres` | 5432 | Tasks & message log DB |
 | `redis` | 6379 | Pub/sub message bus |
 
@@ -101,20 +102,21 @@ sharkswarm/
 │   │       ├── agents.ts           # Agent config registry
 │   │       ├── db.ts               # Postgres pool
 │   │       └── redis.ts            # Redis pub/sub
-│   ├── nanoclaw/                   # Cloned NanoClaw repo (git ignored)
+│   ├── nanoclaw/                   # Cloned OpenClaw repo (git ignored)
 │   ├── agent1/
-│   │   ├── .env                    # Agent-specific config
+│   │   ├── config/openclaw.json    # OpenClaw config (OpenAI provider)
 │   │   └── CLAUDE.md               # Agent personality
 │   ├── agent2/
-│   │   ├── .env
+│   │   ├── config/openclaw.json
 │   │   └── CLAUDE.md
 │   ├── redis-pubsub/               # Bridge daemon
+│   ├── scheduler/                  # Cron task runner
 │   └── postgres/
 │       └── schema.sql
 ├── frontend/                       # Next.js dashboard (Vercel-deployable)
 │   ├── .env.example                # NEXT_PUBLIC_API_URL
 │   ├── Dockerfile                  # For self-hosted Docker
-│   ├── package.json                # No pg/ioredis — pure client
+│   ├── package.json
 │   └── src/
 │       ├── app/
 │       │   ├── page.tsx            # Dashboard home
@@ -158,16 +160,17 @@ VALUES ('agent-1', 'agent-2', 'Analyze this data');
 
 ### 3. Direct HTTP (synchronous)
 ```bash
-curl http://nanoclaw-agent-2:3000/
+curl http://openclaw-agent-2:18789/health
 ```
 
 ## Adding a New Agent
 
-1. Create config: `mkdir backend/agent3 && cp backend/agent1/.env backend/agent3/.env`
-2. Edit `AGENT_ID`, `AGENT_NAME` in the new `.env`
+Agents can be added from the dashboard UI, or manually:
+
+1. Create config: `mkdir -p backend/agent3/config`
+2. Copy and edit `openclaw.json` from an existing agent
 3. Add service block to `backend/docker-compose.yml`
-4. Add entry to `backend/api/src/agents.ts`
-5. Restart: `cd backend && docker compose up -d --build`
+4. Restart: `cd backend && docker compose up -d --build`
 
 ## Common Commands
 

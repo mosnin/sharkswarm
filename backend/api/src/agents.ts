@@ -23,7 +23,7 @@ export async function initAgentRegistry() {
       id           VARCHAR(64)  PRIMARY KEY,
       name         VARCHAR(128) NOT NULL,
       system_prompt TEXT        NOT NULL DEFAULT '',
-      model        VARCHAR(64)  NOT NULL DEFAULT 'openai/gpt-4o-mini',
+      model        VARCHAR(64)  NOT NULL DEFAULT 'openai/gpt-4.1-mini',
       tools        TEXT[]       NOT NULL DEFAULT '{}',
       container_id VARCHAR(128),
       created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
@@ -35,8 +35,8 @@ export async function initAgentRegistry() {
   if (existing.length === 0) {
     await query(`
       INSERT INTO agent_registry (id, name, system_prompt, model, tools) VALUES
-      ('agent-1', 'Agent Alpha', 'You are Agent Alpha, a general-purpose assistant in the SharkSwarm multi-agent system.', 'openai/gpt-4o-mini', ARRAY['web_search','code_execution']),
-      ('agent-2', 'Agent Beta',  'You are Agent Beta, a specialist assistant in the SharkSwarm multi-agent system.',        'openai/gpt-4o-mini', ARRAY['web_search','file_read'])
+      ('agent-1', 'Agent Alpha', 'You are Agent Alpha, a general-purpose assistant in the SharkSwarm multi-agent system.', 'openai/gpt-4.1-mini', ARRAY['web_search','code_execution']),
+      ('agent-2', 'Agent Beta',  'You are Agent Beta, a specialist assistant in the SharkSwarm multi-agent system.',        'openai/gpt-4.1-mini', ARRAY['web_search','file_read'])
       ON CONFLICT DO NOTHING
     `);
   }

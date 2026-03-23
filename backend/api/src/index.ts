@@ -76,7 +76,7 @@ app.post("/api/agents", async (req, res) => {
     const agent = await createAgent({
       name,
       systemPrompt: systemPrompt || `You are ${name}, an AI agent in the SharkSwarm multi-agent system.`,
-      model: model || "gpt-4o-mini",
+      model: model || "openai/gpt-4.1-mini",
       tools: tools || [],
     });
     res.status(201).json(agent);

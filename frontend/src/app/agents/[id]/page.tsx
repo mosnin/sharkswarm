@@ -142,10 +142,11 @@ export default function AgentConfigPage() {
             value={config.model}
             onChange={(e) => setConfig({ ...config, model: e.target.value })}
           >
-            <option value="openai/gpt-4o-mini">GPT-4o Mini (fast, cheap)</option>
-            <option value="openai/gpt-4o">GPT-4o</option>
             <option value="openai/gpt-4.1">GPT-4.1</option>
-            <option value="openai/gpt-4.1-mini">GPT-4.1 Mini</option>
+            <option value="openai/gpt-4.1-mini">GPT-4.1 Mini (default)</option>
+            <option value="openai/gpt-4.1-nano">GPT-4.1 Nano (fast, cheap)</option>
+            <option value="openai/o4-mini">o4-mini (reasoning)</option>
+            <option value="openai/o3">o3 (reasoning)</option>
           </select>
         </label>
 
