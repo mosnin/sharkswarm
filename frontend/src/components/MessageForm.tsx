@@ -5,7 +5,6 @@ import { useState } from "react";
 interface Agent {
   id: string;
   name: string;
-  url: string;
   status: "online" | "offline";
 }
 
