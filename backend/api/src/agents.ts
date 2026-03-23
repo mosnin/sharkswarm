@@ -44,17 +44,12 @@ export async function initAgentRegistry() {
 
 // ── CRUD ──────────────────────────────────────────────────────────
 export async function getAllAgents(): Promise<AgentConfig[]> {
-  const rows = await query<AgentConfig & { system_prompt: string; container_id: string }>(
-    "SELECT * FROM agent_registry ORDER BY created_at"
-  );
+  const rows = await query<AgentRow>("SELECT * FROM agent_registry ORDER BY created_at");
   return rows.map(rowToConfig);
 }
 
 export async function getAgent(id: string): Promise<AgentConfig | undefined> {
-  const rows = await query<AgentConfig & { system_prompt: string }>(
-    "SELECT * FROM agent_registry WHERE id = $1",
-    [id]
-  );
+  const rows = await query<AgentRow>("SELECT * FROM agent_registry WHERE id = $1", [id]);
   return rows.length ? rowToConfig(rows[0]) : undefined;
 }
 
@@ -87,7 +82,7 @@ export async function createAgent(fields: {
   });
   await container.start();
 
-  const rows = await query<AgentConfig & { system_prompt: string }>(
+  const rows = await query<AgentRow>(
     `INSERT INTO agent_registry (id, name, system_prompt, model, tools, container_id)
      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
     [id, fields.name, fields.systemPrompt, fields.model, fields.tools, container.id]
@@ -96,7 +91,7 @@ export async function createAgent(fields: {
 }
 
 export async function updateAgent(id: string, updates: Partial<AgentConfig>): Promise<AgentConfig | undefined> {
-  const rows = await query<AgentConfig & { system_prompt: string }>(
+  const rows = await query<AgentRow>(
     `UPDATE agent_registry
      SET name = COALESCE($1, name),
          system_prompt = COALESCE($2, system_prompt),
@@ -145,7 +140,16 @@ export async function deleteAgent(id: string): Promise<boolean> {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
-function rowToConfig(row: Record<string, unknown>): AgentConfig {
+interface AgentRow {
+  id: string;
+  name: string;
+  system_prompt: string;
+  model: string;
+  tools: string[];
+  container_id?: string;
+}
+
+function rowToConfig(row: AgentRow): AgentConfig {
   const id = row.id as string;
   // Built-in agents use compose service names; dynamic agents use container names
   const isBuiltIn = id === "agent-1" || id === "agent-2";
@@ -157,11 +161,11 @@ function rowToConfig(row: Record<string, unknown>): AgentConfig {
 
   return {
     id,
-    name: row.name as string,
+    name: row.name,
     internalUrl: `http://${hostname}:3000`,
     publicUrl: "",
-    systemPrompt: (row.system_prompt as string) || "",
-    model: row.model as string,
-    tools: (row.tools as string[]) || [],
+    systemPrompt: row.system_prompt || "",
+    model: row.model,
+    tools: row.tools || [],
   };
 }
