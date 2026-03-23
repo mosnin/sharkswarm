@@ -82,7 +82,7 @@ export async function createAgent(fields: {
     ],
     HostConfig: {
       NetworkMode: NETWORK,
-      RestartPolicy: { Name: "unless-stopped" },
+      RestartPolicy: { Name: "unless-stopped" as const },
     },
   });
   await container.start();

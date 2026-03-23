@@ -269,7 +269,7 @@ app.get("/api/logs/filtered", async (req, res) => {
 // --------------- System Health ---------------
 
 app.get("/api/health/system", async (_req, res) => {
-  const agents = getAllAgents();
+  const agents = await getAllAgents();
 
   const agentHealth = await Promise.all(
     agents.map(async (agent) => {
