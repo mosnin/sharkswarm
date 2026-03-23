@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { query, pool } from "./db";
 import { publishToAgent } from "./redis";
-import { getAllAgents, getAgent, updateAgent } from "./agents";
+import { getAllAgents, getAgent, updateAgent, createAgent, deleteAgent, initAgentRegistry } from "./agents";
 import {
   getAllIntegrations,
   getIntegration,
@@ -34,7 +34,7 @@ app.get("/api/health", (_req, res) => {
 // --------------- Agents ---------------
 
 app.get("/api/agents", async (_req, res) => {
-  const agents = getAllAgents();
+  const agents = await getAllAgents();
 
   const results = await Promise.all(
     agents.map(async (agent) => {
@@ -63,16 +63,59 @@ app.get("/api/agents", async (_req, res) => {
   res.json(results);
 });
 
-app.get("/api/agents/:id", (req, res) => {
-  const agent = getAgent(req.params.id);
+app.get("/api/agents/:id", async (req, res) => {
+  const agent = await getAgent(req.params.id);
   if (!agent) return res.status(404).json({ error: "Agent not found" });
   res.json(agent);
 });
 
-app.put("/api/agents/:id", (req, res) => {
-  const updated = updateAgent(req.params.id, req.body);
+app.post("/api/agents", async (req, res) => {
+  const { name, systemPrompt, model, tools } = req.body;
+  if (!name) return res.status(400).json({ error: "name is required" });
+  try {
+    const agent = await createAgent({
+      name,
+      systemPrompt: systemPrompt || `You are ${name}, an AI agent in the SharkSwarm multi-agent system.`,
+      model: model || "gpt-4o-mini",
+      tools: tools || [],
+    });
+    res.status(201).json(agent);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to create agent";
+    console.error("create agent error:", err);
+    res.status(500).json({ error: message });
+  }
+});
+
+app.put("/api/agents/:id", async (req, res) => {
+  const updated = await updateAgent(req.params.id, req.body);
   if (!updated) return res.status(404).json({ error: "Agent not found" });
   res.json(updated);
+});
+
+app.delete("/api/agents/:id", async (req, res) => {
+  const ok = await deleteAgent(req.params.id);
+  if (!ok) return res.status(404).json({ error: "Agent not found" });
+  res.json({ success: true });
+});
+
+app.post("/api/agents/:id/reset", async (req, res) => {
+  const agent = await getAgent(req.params.id);
+  if (!agent) return res.status(404).json({ error: "Agent not found" });
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 3000);
+    await fetch(`${agent.internalUrl}/api/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sender: req.body.sender || "dashboard" }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    res.json({ success: true });
+  } catch {
+    res.status(502).json({ error: "Agent unreachable" });
+  }
 });
 
 // --------------- Messages ---------------
@@ -391,9 +434,16 @@ app.delete("/api/agents/:id/integrations/:integrationId", (req, res) => {
 
 // --------------- Start ---------------
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`SharkSwarm API gateway listening on :${PORT}`);
-});
+initAgentRegistry()
+  .then(() => {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`SharkSwarm API gateway listening on :${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("Failed to init agent registry:", err);
+    process.exit(1);
+  });
 
 process.on("SIGTERM", async () => {
   await pool.end();

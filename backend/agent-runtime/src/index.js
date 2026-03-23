@@ -22,6 +22,16 @@ const AGENT_NAME   = process.env.AGENT_NAME   || "Agent";
 const MODEL        = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const SYSTEM_PROMPT = process.env.SYSTEM_PROMPT ||
   `You are ${AGENT_NAME}, an AI agent in the SharkSwarm multi-agent system. Be concise and helpful.`;
+
+const FULL_SYSTEM_PROMPT = `${SYSTEM_PROMPT}
+
+You are a fully autonomous AI agent with the following capabilities:
+- Communicate with users and other agents via the SharkSwarm dashboard
+- Receive tasks and report results back through the message system
+- Collaborate with peer agents on complex tasks
+- Maintain conversation context across messages
+
+When asked what you can do, describe your role as an agent in this system. You receive messages via Redis pub/sub, process them using OpenAI, and respond. You can be assigned tasks, answer questions, and coordinate with other agents.`;
 const PORT         = Number(process.env.PORT) || 3000;
 const REDIS_URL    = process.env.REDIS_URL    || "redis://localhost:6379";
 const DATABASE_URL = process.env.DATABASE_URL || "";
@@ -89,7 +99,7 @@ async function handleMessage(payload) {
   try {
     const completion = await openai.chat.completions.create({
       model: MODEL,
-      messages: [{ role: "system", content: SYSTEM_PROMPT }, ...history],
+      messages: [{ role: "system", content: FULL_SYSTEM_PROMPT }, ...history],
     });
     reply = completion.choices[0].message.content || "(no response)";
     history.push({ role: "assistant", content: reply });
@@ -132,6 +142,16 @@ app.use(express.json());
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", agent: AGENT_ID, model: MODEL });
+});
+
+app.post("/api/reset", (req, res) => {
+  const sender = req.body?.sender;
+  if (sender) {
+    histories.delete(sender);
+  } else {
+    histories.clear();
+  }
+  res.json({ success: true });
 });
 
 app.listen(PORT, "0.0.0.0", async () => {

@@ -100,9 +100,24 @@ export default function AgentChatPage() {
           />
           <strong style={{ fontSize: 16 }}>{agent?.name || agentId}</strong>
         </div>
-        <button onClick={() => router.push(`/agents/${agentId}`)} style={{ marginLeft: "auto", fontSize: 12 }}>
-          Config
-        </button>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button
+            onClick={async () => {
+              await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/agents/${agentId}/reset`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sender: "dashboard" }),
+              });
+              setMessages([]);
+            }}
+            style={{ fontSize: 12 }}
+          >
+            New Conversation
+          </button>
+          <button onClick={() => router.push(`/agents/${agentId}`)} style={{ fontSize: 12 }}>
+            Config
+          </button>
+        </div>
       </div>
 
       {/* Messages */}

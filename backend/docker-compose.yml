@@ -42,6 +42,7 @@ services:
     build:
       context: ./agent-runtime
       dockerfile: Dockerfile
+    image: sharkswarm-agent
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -105,11 +106,16 @@ services:
     restart: unless-stopped
     ports:
       - "4000:4000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       API_PORT: "4000"
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
       REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://${POSTGRES_USER:-nanoclaw}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-nanoclaw}
+      DOCKER_NETWORK: backend_nanoclaw-net
+      AGENT_IMAGE: sharkswarm-agent
     depends_on:
       redis:
         condition: service_healthy
