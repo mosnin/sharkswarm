@@ -1,0 +1,306 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --font-heading: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+
+  /* MODAF accent colors */
+  --color-magenta: #E91E8C;
+  --color-yellow: #FFE500;
+  --color-cyan: #00B4FF;
+  --color-magenta-glow: #E91E8C40;
+  --color-yellow-glow: #FFE50040;
+  --color-cyan-glow: #00B4FF40;
+
+  /* shadcn tokens */
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* MODAF equalizer animation for music player */
+@keyframes equalize {
+  0%, 100% { height: 4px; }
+  50% { height: 12px; }
+}
+
+/* MODAF glow button */
+@keyframes glow-shift {
+  0% { background-position: 0%; }
+  100% { background-position: 200%; }
+}
+
+.glow-button {
+  position: relative;
+  background: linear-gradient(90deg, #E91E8C, #FFE500, #00B4FF, #E91E8C);
+  background-size: 200%;
+  animation: glow-shift 3s linear infinite;
+  border: none;
+}
+
+.glow-button::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  background: #121213;
+  border-radius: inherit;
+  z-index: 0;
+}
+
+.glow-button::after {
+  content: "";
+  position: absolute;
+  bottom: -20%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 40%;
+  background: linear-gradient(90deg, #E91E8C, #FFE500, #00B4FF, #E91E8C);
+  background-size: 200%;
+  animation: glow-shift 3s linear infinite;
+  filter: blur(12px);
+  opacity: 0.6;
+  border-radius: inherit;
+  z-index: -1;
+}
+
+.glow-button > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Animated grid for hero */
+@keyframes grid-fade {
+  0%, 100% { opacity: 0.03; }
+  50% { opacity: 0.07; }
+}
+
+/* MODAF: Dark mode is the primary experience */
+:root {
+  --background: #000000;
+  --foreground: #FFFFFF;
+  --card: #111111;
+  --card-foreground: #FFFFFF;
+  --popover: #111111;
+  --popover-foreground: #FFFFFF;
+  --primary: #E91E8C;
+  --primary-foreground: #FFFFFF;
+  --secondary: #1A1A1A;
+  --secondary-foreground: #FFFFFF;
+  --muted: #1A1A1A;
+  --muted-foreground: #888888;
+  --accent: #1A1A1A;
+  --accent-foreground: #FFFFFF;
+  --destructive: #DC2626;
+  --border: #222222;
+  --input: #222222;
+  --ring: #E91E8C;
+  --radius: 0.625rem;
+}
+
+.dark {
+  --background: #000000;
+  --foreground: #FFFFFF;
+  --card: #111111;
+  --card-foreground: #FFFFFF;
+  --popover: #111111;
+  --popover-foreground: #FFFFFF;
+  --primary: #E91E8C;
+  --primary-foreground: #FFFFFF;
+  --secondary: #1A1A1A;
+  --secondary-foreground: #FFFFFF;
+  --muted: #1A1A1A;
+  --muted-foreground: #888888;
+  --accent: #1A1A1A;
+  --accent-foreground: #FFFFFF;
+  --destructive: #DC2626;
+  --border: #222222;
+  --input: #222222;
+  --ring: #E91E8C;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans scroll-smooth;
+  }
+}
+
+/* Prevent horizontal overflow on mobile */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Hide scrollbar for code blocks */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Marquee edge fade — mobile: subtle, desktop: only ~35% center visible */
+.marquee-container {
+  mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+}
+
+@media (min-width: 768px) {
+  .marquee-container {
+    mask-image: linear-gradient(to right, transparent 0%, black 33%, black 67%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, black 33%, black 67%, transparent 100%);
+  }
+}
+
+/* Marquee animation — 4 copies, translate 25% for seamless loop */
+@keyframes marquee {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-25%, 0, 0);
+  }
+}
+
+@keyframes marquee-reverse {
+  from {
+    transform: translate3d(-25%, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-marquee {
+  will-change: transform;
+  animation: marquee 40s linear infinite;
+}
+
+.animate-marquee-reverse {
+  will-change: transform;
+  animation: marquee-reverse 40s linear infinite;
+}
+
+/* Retro 3D text shadow effect matching MODAF logo */
+.text-shadow-retro {
+  text-shadow:
+    3px 3px 0 #00B4FF,
+    6px 6px 0 #FFE500,
+    9px 9px 0 #E91E8C;
+}
+
+.text-shadow-retro-sm {
+  text-shadow:
+    2px 2px 0 #00B4FF,
+    4px 4px 0 #FFE500,
+    6px 6px 0 #E91E8C;
+}
+
+/* Gradient text utility */
+.text-gradient-modaf {
+  background: linear-gradient(135deg, #E91E8C, #FFE500, #00B4FF);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glow effects */
+.glow-magenta {
+  box-shadow: 0 0 40px #E91E8C30, 0 0 80px #E91E8C15;
+}
+
+.glow-cyan {
+  box-shadow: 0 0 40px #00B4FF30, 0 0 80px #00B4FF15;
+}
+
+/* Hide native scrollbar — replaced by custom scroll progress bar */
+::-webkit-scrollbar {
+  width: 0;
+  display: none;
+}
+
+html {
+  scrollbar-width: none;
+}
+
+/* Glitch text effect */
+@keyframes glitch-1 {
+  0% { transform: translate(0); }
+  20% { transform: translate(-3px, 2px); }
+  40% { transform: translate(3px, -1px); }
+  60% { transform: translate(-2px, -2px); }
+  80% { transform: translate(2px, 1px); }
+  100% { transform: translate(0); }
+}
+
+@keyframes glitch-2 {
+  0% { transform: translate(0); }
+  20% { transform: translate(3px, -2px); }
+  40% { transform: translate(-3px, 1px); }
+  60% { transform: translate(2px, 2px); }
+  80% { transform: translate(-2px, -1px); }
+  100% { transform: translate(0); }
+}
+
+.animate-glitch-1 {
+  animation: glitch-1 0.3s ease-in-out infinite;
+}
+
+.animate-glitch-2 {
+  animation: glitch-2 0.3s ease-in-out infinite reverse;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee,
+  .animate-marquee-reverse {
+    animation: none;
+  }
+
+  .text-shadow-retro,
+  .text-shadow-retro-sm {
+    text-shadow: none;
+  }
+
+  .animate-glitch-1,
+  .animate-glitch-2 {
+    animation: none;
+  }
+}

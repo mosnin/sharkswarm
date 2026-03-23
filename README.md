@@ -77,6 +77,9 @@ docker compose up -d --build
 sharkswarm/
 ├── setup.sh                        # One-click setup script
 ├── README.md
+├── modaf/                          # MODAF meta-framework (docs & templates)
+│   ├── docs/framework/             # 15-phase SaaS build system
+│   └── src/                        # Marketing site template (Next.js)
 ├── backend/                        # Runs on the Hetzner VM
 │   ├── docker-compose.yml          # Service definitions
 │   ├── .env.example                # Environment template
