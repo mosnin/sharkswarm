@@ -3,6 +3,16 @@ import cors from "cors";
 import { query, pool } from "./db";
 import { publishToAgent } from "./redis";
 import { getAllAgents, getAgent, updateAgent } from "./agents";
+import {
+  getAllIntegrations,
+  getIntegration,
+  createIntegration,
+  updateIntegration,
+  deleteIntegration,
+  getAgentIntegrations,
+  bindIntegrationToAgent,
+  unbindIntegrationFromAgent,
+} from "./integrations";
 
 const app = express();
 const PORT = Number(process.env.API_PORT) || 4000;
@@ -10,7 +20,7 @@ const PORT = Number(process.env.API_PORT) || 4000;
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN || "*",
-    methods: ["GET", "POST", "PUT", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   })
 );
 app.use(express.json());
@@ -118,6 +128,103 @@ app.get("/api/logs", async (req, res) => {
     [limit]
   );
   res.json(rows);
+});
+
+// --------------- Tool Integrations ---------------
+
+app.get("/api/integrations", (_req, res) => {
+  res.json(getAllIntegrations());
+});
+
+app.get("/api/integrations/:id", (req, res) => {
+  const tool = getIntegration(req.params.id);
+  if (!tool) return res.status(404).json({ error: "Integration not found" });
+  res.json(tool);
+});
+
+app.post("/api/integrations", (req, res) => {
+  const { type } = req.body;
+  if (!type || !["api", "mcp"].includes(type)) {
+    return res.status(400).json({ error: "type must be 'api' or 'mcp'" });
+  }
+  const created = createIntegration(req.body);
+  res.status(201).json(created);
+});
+
+app.put("/api/integrations/:id", (req, res) => {
+  const updated = updateIntegration(req.params.id, req.body);
+  if (!updated) return res.status(404).json({ error: "Integration not found" });
+  res.json(updated);
+});
+
+app.delete("/api/integrations/:id", (req, res) => {
+  const ok = deleteIntegration(req.params.id);
+  if (!ok) return res.status(404).json({ error: "Integration not found" });
+  res.json({ success: true });
+});
+
+// Test an API tool integration by making the actual HTTP call
+app.post("/api/integrations/:id/test", async (req, res) => {
+  const tool = getIntegration(req.params.id);
+  if (!tool) return res.status(404).json({ error: "Integration not found" });
+
+  if (tool.type === "api") {
+    try {
+      // Replace template placeholders with provided params
+      let url = tool.url;
+      let body = tool.bodyTemplate;
+      const params = req.body.params || {};
+      for (const [key, value] of Object.entries(params)) {
+        url = url.replace(`{{${key}}}`, String(value));
+        body = body.replace(`{{${key}}}`, String(value));
+      }
+
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
+      const r = await fetch(url, {
+        method: tool.method,
+        headers: { "Content-Type": "application/json", ...tool.headers },
+        body: tool.method !== "GET" && body ? body : undefined,
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+
+      const text = await r.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = text; }
+      res.json({ status: r.status, ok: r.ok, data });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      res.json({ status: 0, ok: false, error: message });
+    }
+  } else if (tool.type === "mcp") {
+    // For MCP, just verify the config looks valid
+    const valid =
+      (tool.transport === "stdio" && tool.command) ||
+      (["sse", "streamable-http"].includes(tool.transport) && tool.url);
+    res.json({ ok: !!valid, status: valid ? "config_valid" : "invalid_config" });
+  } else {
+    res.status(400).json({ error: "Unknown integration type" });
+  }
+});
+
+// --------------- Agent ↔ Integration Bindings ---------------
+
+app.get("/api/agents/:id/integrations", (req, res) => {
+  res.json(getAgentIntegrations(req.params.id));
+});
+
+app.post("/api/agents/:id/integrations", (req, res) => {
+  const { integrationId } = req.body;
+  if (!integrationId) return res.status(400).json({ error: "integrationId required" });
+  const ok = bindIntegrationToAgent(req.params.id, integrationId);
+  if (!ok) return res.status(404).json({ error: "Integration not found" });
+  res.json({ success: true });
+});
+
+app.delete("/api/agents/:id/integrations/:integrationId", (req, res) => {
+  unbindIntegrationFromAgent(req.params.id, req.params.integrationId);
+  res.json({ success: true });
 });
 
 // --------------- Start ---------------

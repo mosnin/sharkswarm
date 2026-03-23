@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 
@@ -14,6 +14,13 @@ interface AgentConfig {
   tools: string[];
 }
 
+interface ToolIntegration {
+  id: string;
+  name: string;
+  description: string;
+  type: "api" | "mcp";
+}
+
 export default function AgentConfigPage() {
   const params = useParams();
   const router = useRouter();
@@ -24,11 +31,29 @@ export default function AgentConfigPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
+  // Integration bindings
+  const [allIntegrations, setAllIntegrations] = useState<ToolIntegration[]>([]);
+  const [boundIntegrations, setBoundIntegrations] = useState<ToolIntegration[]>([]);
+
+  const fetchIntegrations = useCallback(async () => {
+    try {
+      const [all, bound] = await Promise.all([
+        api<ToolIntegration[]>("/api/integrations"),
+        api<ToolIntegration[]>(`/api/agents/${agentId}/integrations`),
+      ]);
+      setAllIntegrations(all);
+      setBoundIntegrations(bound);
+    } catch {
+      // ignore
+    }
+  }, [agentId]);
+
   useEffect(() => {
     api<AgentConfig>(`/api/agents/${agentId}`)
       .then(setConfig)
       .catch(() => setError("Agent not found"));
-  }, [agentId]);
+    fetchIntegrations();
+  }, [agentId, fetchIntegrations]);
 
   const handleSave = async () => {
     if (!config) return;
@@ -55,6 +80,32 @@ export default function AgentConfigPage() {
     }
   };
 
+  const handleBind = async (integrationId: string) => {
+    await api(`/api/agents/${agentId}/integrations`, {
+      method: "POST",
+      body: JSON.stringify({ integrationId }),
+    });
+    await fetchIntegrations();
+  };
+
+  const handleUnbind = async (integrationId: string) => {
+    await api(`/api/agents/${agentId}/integrations/${integrationId}`, {
+      method: "DELETE",
+    });
+    await fetchIntegrations();
+  };
+
+  const boundIds = new Set(boundIntegrations.map((i) => i.id));
+  const availableIntegrations = allIntegrations.filter((i) => !boundIds.has(i.id));
+
+  const labelStyle = { fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 } as const;
+  const cardStyle = {
+    background: "var(--surface)",
+    borderRadius: 8,
+    border: "1px solid var(--border)",
+    padding: 16,
+  } as const;
+
   if (error && !config) {
     return (
       <div>
@@ -75,9 +126,10 @@ export default function AgentConfigPage() {
         <h1 style={{ fontSize: 24 }}>Configure {config.name}</h1>
       </div>
 
+      {/* ── Basic Config ── */}
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <label>
-          <span style={{ fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Name</span>
+          <span style={labelStyle}>Name</span>
           <input
             value={config.name}
             onChange={(e) => setConfig({ ...config, name: e.target.value })}
@@ -85,7 +137,7 @@ export default function AgentConfigPage() {
         </label>
 
         <label>
-          <span style={{ fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Model</span>
+          <span style={labelStyle}>Model</span>
           <select
             value={config.model}
             onChange={(e) => setConfig({ ...config, model: e.target.value })}
@@ -97,7 +149,7 @@ export default function AgentConfigPage() {
         </label>
 
         <label>
-          <span style={{ fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>System Prompt</span>
+          <span style={labelStyle}>System Prompt</span>
           <textarea
             rows={6}
             value={config.systemPrompt}
@@ -106,9 +158,7 @@ export default function AgentConfigPage() {
         </label>
 
         <label>
-          <span style={{ fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-            Tools (comma-separated)
-          </span>
+          <span style={labelStyle}>Built-in Tools (comma-separated)</span>
           <input
             value={config.tools.join(", ")}
             onChange={(e) =>
@@ -127,6 +177,79 @@ export default function AgentConfigPage() {
           {saved && <span style={{ color: "var(--green)", fontSize: 13 }}>Saved!</span>}
           {error && <span style={{ color: "var(--red)", fontSize: 13 }}>{error}</span>}
         </div>
+      </div>
+
+      {/* ── Attached Integrations ── */}
+      <div style={{ marginTop: 32 }}>
+        <h2 style={{ fontSize: 18, marginBottom: 12 }}>Attached Integrations</h2>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
+          API tools and MCP servers this agent can use.{" "}
+          <a href="/integrations">Manage all integrations →</a>
+        </p>
+
+        {boundIntegrations.length === 0 ? (
+          <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+            No integrations attached yet.
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {boundIntegrations.map((t) => (
+              <div key={t.id} style={{ ...cardStyle, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        padding: "1px 5px",
+                        borderRadius: 3,
+                        background: t.type === "mcp" ? "var(--accent)" : "var(--green)",
+                        color: "#fff",
+                        textTransform: "uppercase",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {t.type}
+                    </span>
+                    <span style={{ fontSize: 14, fontWeight: 500 }}>{t.name}</span>
+                  </div>
+                  <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{t.description}</p>
+                </div>
+                <button
+                  onClick={() => handleUnbind(t.id)}
+                  style={{ fontSize: 12, padding: "4px 10px", color: "var(--red)", borderColor: "var(--red)", flexShrink: 0 }}
+                >
+                  Detach
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Add integration dropdown ── */}
+        {availableIntegrations.length > 0 && (
+          <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
+            <select
+              id="add-integration"
+              defaultValue=""
+              style={{ flex: 1 }}
+              onChange={async (e) => {
+                if (e.target.value) {
+                  await handleBind(e.target.value);
+                  e.target.value = "";
+                }
+              }}
+            >
+              <option value="" disabled>
+                + Attach an integration...
+              </option>
+              {availableIntegrations.map((t) => (
+                <option key={t.id} value={t.id}>
+                  [{t.type.toUpperCase()}] {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
     </div>
   );

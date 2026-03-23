@@ -23,6 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <strong style={{ fontSize: 18 }}>NanoClaw Dashboard</strong>
           <a href="/">Agents</a>
           <a href="/messages">Messages</a>
+          <a href="/integrations">Integrations</a>
           <a href="/logs">Logs</a>
         </nav>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: 24 }}>
