@@ -130,6 +130,174 @@ app.get("/api/logs", async (req, res) => {
   res.json(rows);
 });
 
+// --------------- Tasks ---------------
+
+app.get("/api/tasks", async (req, res) => {
+  const limit = Number(req.query.limit) || 100;
+  const status = req.query.status as string | undefined;
+  const agent = req.query.agent as string | undefined;
+
+  let sql = "SELECT * FROM tasks";
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (status) {
+    params.push(status);
+    conditions.push(`status = $${params.length}`);
+  }
+  if (agent) {
+    params.push(agent);
+    conditions.push(`(from_agent = $${params.length} OR to_agent = $${params.length})`);
+  }
+  if (conditions.length) sql += " WHERE " + conditions.join(" AND ");
+  sql += " ORDER BY created_at DESC";
+  params.push(limit);
+  sql += ` LIMIT $${params.length}`;
+
+  const rows = await query(sql, params);
+  res.json(rows);
+});
+
+app.post("/api/tasks", async (req, res) => {
+  const { from_agent, to_agent, message } = req.body;
+  if (!from_agent || !to_agent || !message) {
+    return res.status(400).json({ error: "from_agent, to_agent, and message are required" });
+  }
+  const rows = await query(
+    `INSERT INTO tasks (from_agent, to_agent, message) VALUES ($1, $2, $3) RETURNING *`,
+    [from_agent, to_agent, message]
+  );
+  res.status(201).json(rows[0]);
+});
+
+app.put("/api/tasks/:id", async (req, res) => {
+  const { status, result } = req.body;
+  const rows = await query(
+    `UPDATE tasks SET status = COALESCE($1, status), result = COALESCE($2, result), updated_at = NOW()
+     WHERE id = $3 RETURNING *`,
+    [status || null, result || null, req.params.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: "Task not found" });
+  res.json(rows[0]);
+});
+
+// --------------- Agent Conversation History ---------------
+
+app.get("/api/agents/:id/messages", async (req, res) => {
+  const agentId = req.params.id;
+  const limit = Number(req.query.limit) || 100;
+  const rows = await query(
+    `SELECT * FROM messages
+     WHERE from_agent = $1 OR to_agent = $1
+     ORDER BY created_at ASC
+     LIMIT $2`,
+    [agentId, limit]
+  );
+  res.json(rows);
+});
+
+// --------------- Enhanced Logs ---------------
+
+app.get("/api/logs/filtered", async (req, res) => {
+  const limit = Number(req.query.limit) || 100;
+  const agent = req.query.agent as string | undefined;
+  const level = req.query.level as string | undefined;
+  const since = req.query.since as string | undefined;
+
+  let sql = "SELECT * FROM agent_logs";
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (agent) {
+    params.push(agent);
+    conditions.push(`agent_id = $${params.length}`);
+  }
+  if (level) {
+    params.push(level);
+    conditions.push(`level = $${params.length}`);
+  }
+  if (since) {
+    params.push(since);
+    conditions.push(`created_at >= $${params.length}::timestamptz`);
+  }
+  if (conditions.length) sql += " WHERE " + conditions.join(" AND ");
+  sql += " ORDER BY created_at DESC";
+  params.push(limit);
+  sql += ` LIMIT $${params.length}`;
+
+  const rows = await query(sql, params);
+  res.json(rows);
+});
+
+// --------------- System Health ---------------
+
+app.get("/api/health/system", async (_req, res) => {
+  const agents = getAllAgents();
+
+  const agentHealth = await Promise.all(
+    agents.map(async (agent) => {
+      let status: "online" | "offline" = "offline";
+      let latencyMs: number | null = null;
+      const start = Date.now();
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 3000);
+        const r = await fetch(`${agent.internalUrl}/api/health`, {
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
+        if (r.ok) {
+          status = "online";
+          latencyMs = Date.now() - start;
+        }
+      } catch {
+        // offline
+      }
+
+      // Last activity from messages table
+      const lastMsg = await query(
+        `SELECT created_at FROM messages WHERE from_agent = $1 OR to_agent = $1 ORDER BY created_at DESC LIMIT 1`,
+        [agent.id]
+      );
+
+      return {
+        id: agent.id,
+        name: agent.name,
+        status,
+        latencyMs,
+        lastActivity: lastMsg.length ? (lastMsg[0] as { created_at: string }).created_at : null,
+      };
+    })
+  );
+
+  // DB + Redis checks
+  let dbOk = false;
+  try {
+    await query("SELECT 1");
+    dbOk = true;
+  } catch { /* */ }
+
+  let redisOk = false;
+  try {
+    const { redis } = await import("./redis");
+    const pong = await redis.ping();
+    redisOk = pong === "PONG";
+  } catch { /* */ }
+
+  // Task stats
+  const taskStats = await query(
+    `SELECT status, COUNT(*)::int as count FROM tasks GROUP BY status`
+  );
+
+  res.json({
+    agents: agentHealth,
+    infrastructure: { postgres: dbOk, redis: redisOk },
+    tasks: Object.fromEntries(
+      (taskStats as { status: string; count: number }[]).map((r) => [r.status, r.count])
+    ),
+  });
+});
+
 // --------------- Tool Integrations ---------------
 
 app.get("/api/integrations", (_req, res) => {

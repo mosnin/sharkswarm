@@ -1,34 +1,34 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import NavThemeToggle from "@/components/NavThemeToggle";
 
 export const metadata: Metadata = {
-  title: "NanoClaw Dashboard",
+  title: "SharkSwarm Dashboard",
   description: "Multi-agent NanoClaw management dashboard",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body>
-        <nav
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 24,
-            padding: "16px 24px",
-            borderBottom: "1px solid var(--border)",
-            background: "var(--surface)",
-          }}
-        >
-          <strong style={{ fontSize: 18 }}>NanoClaw Dashboard</strong>
-          <a href="/">Agents</a>
-          <a href="/messages">Messages</a>
-          <a href="/integrations">Integrations</a>
-          <a href="/logs">Logs</a>
-        </nav>
-        <div style={{ maxWidth: 1200, margin: "0 auto", padding: 24 }}>
-          {children}
-        </div>
+        <ThemeProvider>
+          <nav className="nav-bar">
+            <strong style={{ fontSize: 18, flexShrink: 0 }}>SharkSwarm</strong>
+            <div className="nav-links">
+              <a href="/">Agents</a>
+              <a href="/tasks">Tasks</a>
+              <a href="/messages">Messages</a>
+              <a href="/integrations">Integrations</a>
+              <a href="/health">Health</a>
+              <a href="/logs">Logs</a>
+            </div>
+            <NavThemeToggle />
+          </nav>
+          <div style={{ maxWidth: 1200, margin: "0 auto", padding: 24 }}>
+            {children}
+          </div>
+        </ThemeProvider>
       </body>
     </html>
   );

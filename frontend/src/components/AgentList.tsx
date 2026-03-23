@@ -39,7 +39,10 @@ export default function AgentList({ agents }: { agents: Agent[] }) {
             <div style={{ flex: 1 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div style={{ fontSize: 14, fontWeight: 600 }}>{agent.name}</div>
-                <a href={`/agents/${agent.id}`} style={{ fontSize: 12 }}>Config</a>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <a href={`/agents/${agent.id}/chat`} style={{ fontSize: 12 }}>Chat</a>
+                  <a href={`/agents/${agent.id}`} style={{ fontSize: 12 }}>Config</a>
+                </div>
               </div>
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{agent.id}</div>
               {agent.model && (
