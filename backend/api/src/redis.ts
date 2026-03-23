@@ -8,10 +8,9 @@ export async function publishToAgent(
   content: string
 ) {
   const payload = JSON.stringify({
-    from: fromAgent,
-    to: toAgent,
-    content,
-    timestamp: new Date().toISOString(),
+    from_agent: fromAgent,
+    to_agent: toAgent,
+    message: content,
   });
   await redis.publish(`agent:${toAgent}:inbox`, payload);
 }
