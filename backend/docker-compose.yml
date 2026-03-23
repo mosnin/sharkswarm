@@ -37,21 +37,20 @@ services:
     networks:
       - nanoclaw-net
 
-  # ── NanoClaw Agents ─────────────────────────────────────────────
+  # ── OpenAI Agents ────────────────────────────────────────────────
   nanoclaw-agent-1:
     build:
-      context: ./nanoclaw
+      context: ./agent-runtime
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
       - "3000:3000"
-    volumes:
-      - ./agent1:/app/agent-data
-    env_file:
-      - ./agent1/.env
     environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_API_KEY:-}
+      AGENT_ID: agent-1
+      AGENT_NAME: "Agent Alpha"
+      SYSTEM_PROMPT: "You are Agent Alpha, a general-purpose assistant in the SharkSwarm multi-agent system. Be concise and helpful."
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://${POSTGRES_USER:-nanoclaw}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-nanoclaw}
     depends_on:
@@ -64,18 +63,17 @@ services:
 
   nanoclaw-agent-2:
     build:
-      context: ./nanoclaw
+      context: ./agent-runtime
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
       - "3001:3000"
-    volumes:
-      - ./agent2:/app/agent-data
-    env_file:
-      - ./agent2/.env
     environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_API_KEY:-}
+      AGENT_ID: agent-2
+      AGENT_NAME: "Agent Beta"
+      SYSTEM_PROMPT: "You are Agent Beta, a specialist assistant in the SharkSwarm multi-agent system. Focus on detailed analysis and structured responses."
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://${POSTGRES_USER:-nanoclaw}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-nanoclaw}
     depends_on:
