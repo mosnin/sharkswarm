@@ -34,9 +34,22 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
+-- Cron-based schedules (used by the scheduler service)
+CREATE TABLE IF NOT EXISTS schedules (
+    id          SERIAL PRIMARY KEY,
+    name        VARCHAR(128) NOT NULL,
+    agent_id    VARCHAR(64)  NOT NULL,
+    cron_expr   VARCHAR(128) NOT NULL,
+    message     TEXT         NOT NULL,
+    enabled     BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_tasks_to_agent   ON tasks(to_agent);
 CREATE INDEX IF NOT EXISTS idx_tasks_status     ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_logs_agent_id    ON agent_logs(agent_id);
 CREATE INDEX IF NOT EXISTS idx_logs_created     ON agent_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_schedules_enabled ON schedules(enabled);
