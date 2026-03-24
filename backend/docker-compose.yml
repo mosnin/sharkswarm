@@ -162,11 +162,13 @@ services:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.agentfrac.com}
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: https://api.agentfrac.com
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.agentfrac.com}
     depends_on:
       - api
     networks:
