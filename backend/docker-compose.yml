@@ -39,6 +39,8 @@ services:
       dockerfile: Dockerfile
     image: sharkswarm-openclaw
     restart: unless-stopped
+    command: ["node", "openclaw.mjs", "gateway", "--allow-unconfigured", "--bind", "lan"]
+    user: "node"
     volumes:
       - ./agent1/config:/home/node/.openclaw
       - ./agent1/workspace:/home/node/.openclaw/workspace
@@ -68,6 +70,8 @@ services:
       dockerfile: Dockerfile
     image: sharkswarm-openclaw
     restart: unless-stopped
+    command: ["node", "openclaw.mjs", "gateway", "--allow-unconfigured", "--bind", "lan"]
+    user: "node"
     volumes:
       - ./agent2/config:/home/node/.openclaw
       - ./agent2/workspace:/home/node/.openclaw/workspace
