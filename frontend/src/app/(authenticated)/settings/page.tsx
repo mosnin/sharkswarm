@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/page-header";
+import { showSuccess, showError } from "@/lib/toast";
 
 /* ── types ────────────────────────────────────────────────────────── */
 
@@ -307,7 +309,7 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 24, marginBottom: 24 }}>Settings</h1>
+      <PageHeader title="Agent Settings" description="Configuration and workspace files" />
 
       {/* ── 1. Agent Selector ──────────────────────────────────────── */}
       <div style={{ ...cardStyle, marginBottom: 20 }}>

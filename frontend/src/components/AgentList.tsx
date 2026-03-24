@@ -1,5 +1,7 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
+
 interface Agent {
   id: string;
   name: string;
@@ -32,18 +34,14 @@ export default function AgentList({ agents, onDelete }: Props) {
               border: "1px solid var(--border)",
             }}
           >
-            <span
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: agent.status === "online" ? "var(--green)" : "var(--red)",
-                flexShrink: 0,
-              }}
-            />
             <div style={{ flex: 1 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{agent.name}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Badge variant={agent.status === "online" ? "success" : "neutral"}>
+                    {agent.status}
+                  </Badge>
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>{agent.name}</span>
+                </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <a href={`/agents/${agent.id}/chat`} style={{ fontSize: 12 }}>Chat</a>
                   <a href={`/agents/${agent.id}`} style={{ fontSize: 12 }}>Config</a>
@@ -57,7 +55,7 @@ export default function AgentList({ agents, onDelete }: Props) {
                   )}
                 </div>
               </div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{agent.id}</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{agent.id}</div>
               {agent.model && (
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{agent.model}</div>
               )}

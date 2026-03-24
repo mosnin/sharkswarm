@@ -2,6 +2,11 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
+import { StatCardsSkeleton, CardListSkeleton } from "@/components/ui/skeleton";
+import { ErrorBlock } from "@/components/ui/error-block";
+import { showSuccess, showError } from "@/lib/toast";
 
 interface AgentHealth {
   id: string;
@@ -32,16 +37,18 @@ const cardStyle = {
 
 export default function HealthPage() {
   const [health, setHealth] = useState<SystemHealth | null>(null);
+  const [error, setError] = useState("");
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [heartbeats, setHeartbeats] = useState<Record<string, HeartbeatInfo>>({});
   const [waking, setWaking] = useState<string | null>(null);
 
   const fetchHealth = useCallback(async () => {
     try {
+      setError("");
       setHealth(await api<SystemHealth>("/api/health/system"));
       setLastRefresh(new Date());
     } catch (err) {
-      console.error("Failed to fetch system health:", err);
+      setError("Failed to fetch system health");
     }
   }, []);
 
@@ -79,32 +86,31 @@ export default function HealthPage() {
         body: JSON.stringify({ text: "Manual heartbeat from dashboard", mode: "now" }),
       });
       await fetchHealth();
+      showSuccess("Heartbeat sent");
     } catch (err) {
-      console.error("Failed to trigger heartbeat:", err);
+      showError("Failed to trigger heartbeat");
     } finally {
       setWaking(null);
     }
   };
 
-  if (!health) return <p>Loading system health...</p>;
+  if (error) return <ErrorBlock message={error} onRetry={fetchHealth} />;
+  if (!health) return <StatCardsSkeleton count={3} />;
 
   const totalTasks = Object.values(health.tasks).reduce((a, b) => a + b, 0);
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24 }}>System Health</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {lastRefresh && (
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              Last refresh: {lastRefresh.toLocaleTimeString()}
-            </span>
-          )}
-          <button onClick={fetchHealth} style={{ fontSize: 13, padding: "6px 14px" }}>
-            Refresh
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="System Health"
+        description="Infrastructure and agent monitoring"
+        action={
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {lastRefresh && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Last: {lastRefresh.toLocaleTimeString()}</span>}
+            <button onClick={fetchHealth} style={{ fontSize: 13, padding: "6px 14px" }}>Refresh</button>
+          </div>
+        }
+      />
 
       {/* Infrastructure */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
@@ -149,20 +155,15 @@ export default function HealthPage() {
                   <div style={{ fontSize: 15, fontWeight: 600 }}>{agent.name}</div>
                   <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{agent.id}</div>
                 </div>
-                <span style={{
-                  fontSize: 11, padding: "2px 8px", borderRadius: 10,
-                  background: agent.status === "online" ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
-                  color: agent.status === "online" ? "var(--green)" : "var(--red)",
-                  fontWeight: 600,
-                }}>
-                  {agent.status}
-                </span>
+                <Badge variant={agent.status === "online" ? "success" : "error"}>{agent.status}</Badge>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 13 }}>
                 <div>
                   <span style={{ color: "var(--text-muted)" }}>Latency: </span>
-                  <span>{agent.latencyMs !== null ? `${agent.latencyMs}ms` : "—"}</span>
+                  <span style={{ color: agent.latencyMs !== null ? (agent.latencyMs < 100 ? "var(--green)" : agent.latencyMs < 500 ? "var(--yellow)" : "var(--red)") : undefined }}>
+                    {agent.latencyMs !== null ? `${agent.latencyMs}ms` : "—"}
+                  </span>
                 </div>
                 <div>
                   <span style={{ color: "var(--text-muted)" }}>Last activity: </span>

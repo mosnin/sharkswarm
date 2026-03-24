@@ -2,6 +2,13 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBlock } from "@/components/ui/error-block";
+import { CardListSkeleton } from "@/components/ui/skeleton";
+import { showSuccess, showError } from "@/lib/toast";
+import { CheckSquare } from "lucide-react";
 
 interface Task {
   id: number;
@@ -32,9 +39,12 @@ export default function TasksPage() {
   const [filterStatus, setFilterStatus] = useState("");
   const [filterAgent, setFilterAgent] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [newTask, setNewTask] = useState({ from_agent: "", to_agent: "", message: "" });
 
   const fetchTasks = useCallback(async () => {
+    setError("");
     try {
       const params = new URLSearchParams();
       if (filterStatus) params.set("status", filterStatus);
@@ -43,6 +53,9 @@ export default function TasksPage() {
       setTasks(await api<Task[]>(`/api/tasks${qs ? `?${qs}` : ""}`));
     } catch (err) {
       console.error("Failed to fetch tasks:", err);
+      setError("Failed to load tasks");
+    } finally {
+      setLoading(false);
     }
   }, [filterStatus, filterAgent]);
 
@@ -66,21 +79,33 @@ export default function TasksPage() {
 
   const handleCreate = async () => {
     if (!newTask.from_agent || !newTask.to_agent || !newTask.message) return;
-    await api("/api/tasks", {
-      method: "POST",
-      body: JSON.stringify(newTask),
-    });
-    setNewTask({ from_agent: "", to_agent: "", message: "" });
-    setShowCreate(false);
-    await fetchTasks();
+    try {
+      await api("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify(newTask),
+      });
+      setNewTask({ from_agent: "", to_agent: "", message: "" });
+      setShowCreate(false);
+      await fetchTasks();
+      showSuccess("Task created");
+    } catch (err) {
+      console.error("Failed to create task:", err);
+      showError("Failed to create task");
+    }
   };
 
   const handleStatusChange = async (taskId: number, status: string) => {
-    await api(`/api/tasks/${taskId}`, {
-      method: "PUT",
-      body: JSON.stringify({ status }),
-    });
-    await fetchTasks();
+    try {
+      await api(`/api/tasks/${taskId}`, {
+        method: "PUT",
+        body: JSON.stringify({ status }),
+      });
+      await fetchTasks();
+      showSuccess("Task status updated");
+    } catch (err) {
+      console.error("Failed to update task status:", err);
+      showError("Failed to update task status");
+    }
   };
 
   const cardStyle = {
@@ -102,12 +127,11 @@ export default function TasksPage() {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <h1 style={{ fontSize: 24 }}>Task Queue</h1>
-        <button className="primary" onClick={() => setShowCreate(!showCreate)}>
-          {showCreate ? "Cancel" : "+ Create Task"}
-        </button>
-      </div>
+      <PageHeader
+        title="Task Queue"
+        description={`${tasks.length} tasks`}
+        action={<button className="primary" onClick={() => setShowCreate(!showCreate)}>{showCreate ? "Cancel" : "+ Create Task"}</button>}
+      />
 
       {/* Summary pills */}
       <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
@@ -187,27 +211,23 @@ export default function TasksPage() {
       )}
 
       {/* Task list */}
+      {loading ? <CardListSkeleton count={3} /> : error ? <ErrorBlock message={error} onRetry={fetchTasks} /> : (
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {tasks.length === 0 && (
-          <p style={{ color: "var(--text-muted)" }}>No tasks found.</p>
+          <EmptyState
+            icon={<CheckSquare size={40} />}
+            title="No tasks found"
+            description="Create a task to coordinate work between agents."
+            action={{ label: "Create Task", onClick: () => setShowCreate(true) }}
+          />
         )}
         {tasks.map((task) => (
           <div key={task.id} style={cardStyle}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span
-                  style={{
-                    fontSize: 11,
-                    padding: "2px 8px",
-                    borderRadius: 10,
-                    background: STATUS_COLORS[task.status],
-                    color: "#fff",
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                  }}
-                >
+                <Badge variant={task.status === "completed" ? "success" : task.status === "failed" ? "error" : task.status === "in_progress" ? "info" : "warning"}>
                   {task.status.replace("_", " ")}
-                </span>
+                </Badge>
                 <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
                   #{task.id}
                 </span>
@@ -263,6 +283,7 @@ export default function TasksPage() {
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }

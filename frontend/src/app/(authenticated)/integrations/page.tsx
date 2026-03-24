@@ -2,6 +2,14 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBlock } from "@/components/ui/error-block";
+import { CardListSkeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { showSuccess, showError } from "@/lib/toast";
+import { Plug } from "lucide-react";
 
 interface ApiTool {
   id: string;
@@ -84,12 +92,18 @@ export default function IntegrationsPage() {
   const [testResult, setTestResult] = useState<Record<string, unknown> | null>(null);
   const [testedId, setTestedId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const fetchIntegrations = useCallback(async () => {
     try {
+      setError("");
       setIntegrations(await api<ToolIntegration[]>("/api/integrations"));
     } catch {
-      // ignore
+      setError("Failed to load integrations");
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -98,49 +112,61 @@ export default function IntegrationsPage() {
   }, [fetchIntegrations]);
 
   const handleCreate = async () => {
-    if (formType === "api") {
-      let headers: Record<string, string> = {};
-      try {
-        headers = JSON.parse(apiForm.headers);
-      } catch {
-        // keep empty
+    try {
+      if (formType === "api") {
+        let headers: Record<string, string> = {};
+        try {
+          headers = JSON.parse(apiForm.headers);
+        } catch {
+          // keep empty
+        }
+        await api("/api/integrations", {
+          method: "POST",
+          body: JSON.stringify({
+            type: "api",
+            name: apiForm.name,
+            description: apiForm.description,
+            method: apiForm.method,
+            url: apiForm.url,
+            headers,
+            bodyTemplate: apiForm.bodyTemplate,
+          }),
+        });
+      } else {
+        await api("/api/integrations", {
+          method: "POST",
+          body: JSON.stringify({
+            type: "mcp",
+            name: mcpForm.name,
+            description: mcpForm.description,
+            transport: mcpForm.transport,
+            command: mcpForm.command || undefined,
+            args: mcpForm.args ? mcpForm.args.split(" ").filter(Boolean) : [],
+            url: mcpForm.url || undefined,
+            apiKey: mcpForm.apiKey || undefined,
+          }),
+        });
       }
-      await api("/api/integrations", {
-        method: "POST",
-        body: JSON.stringify({
-          type: "api",
-          name: apiForm.name,
-          description: apiForm.description,
-          method: apiForm.method,
-          url: apiForm.url,
-          headers,
-          bodyTemplate: apiForm.bodyTemplate,
-        }),
-      });
-    } else {
-      await api("/api/integrations", {
-        method: "POST",
-        body: JSON.stringify({
-          type: "mcp",
-          name: mcpForm.name,
-          description: mcpForm.description,
-          transport: mcpForm.transport,
-          command: mcpForm.command || undefined,
-          args: mcpForm.args ? mcpForm.args.split(" ").filter(Boolean) : [],
-          url: mcpForm.url || undefined,
-          apiKey: mcpForm.apiKey || undefined,
-        }),
-      });
+      setShowForm(false);
+      setApiForm({ ...emptyApi });
+      setMcpForm({ ...emptyMcp });
+      showSuccess("Integration created");
+      await fetchIntegrations();
+    } catch {
+      showError("Failed to create integration");
     }
-    setShowForm(false);
-    setApiForm({ ...emptyApi });
-    setMcpForm({ ...emptyMcp });
-    await fetchIntegrations();
   };
 
   const handleDelete = async (id: string) => {
-    await api(`/api/integrations/${id}`, { method: "DELETE" });
-    await fetchIntegrations();
+    try {
+      await api(`/api/integrations/${id}`, { method: "DELETE" });
+      showSuccess("Integration deleted");
+      await fetchIntegrations();
+    } catch {
+      showError("Failed to delete integration");
+    } finally {
+      setDeleteTarget(null);
+    }
   };
 
   const handleTest = async (id: string) => {
@@ -170,8 +196,8 @@ export default function IntegrationsPage() {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24 }}>Tool Integrations</h1>
+      <PageHeader title="Integrations" description="API tools and MCP servers" />
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 24 }}>
         <button className="primary" onClick={() => setShowForm(!showForm)}>
           {showForm ? "Cancel" : "+ Add Integration"}
         </button>
@@ -342,12 +368,16 @@ export default function IntegrationsPage() {
       )}
 
       {/* Integration cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        {integrations.length === 0 && (
-          <p style={{ color: "var(--text-muted)", gridColumn: "1 / -1" }}>
-            No integrations yet. Click &quot;+ Add Integration&quot; to get started.
-          </p>
-        )}
+      {loading && <CardListSkeleton count={3} />}
+      {!loading && error && <ErrorBlock message={error} onRetry={fetchIntegrations} />}
+      {!loading && !error && integrations.length === 0 && (
+        <EmptyState
+          icon={<Plug size={40} />}
+          title="No integrations"
+          description="Add API tools or MCP servers to extend agent capabilities."
+        />
+      )}
+      {!loading && !error && integrations.length > 0 && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         {integrations.map((t) => (
           <div key={t.id} style={cardStyle}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
@@ -386,14 +416,9 @@ export default function IntegrationsPage() {
                     : t.url}
                 </span>
                 <div style={{ marginTop: 4 }}>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      color: t.status === "connected" ? "var(--green)" : "var(--text-muted)",
-                    }}
-                  >
+                  <Badge variant={t.status === "connected" ? "success" : t.status === "error" ? "error" : "neutral"}>
                     {t.status}
-                  </span>
+                  </Badge>
                   {t.tools.length > 0 && (
                     <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 8 }}>
                       {t.tools.length} tools discovered
@@ -412,7 +437,7 @@ export default function IntegrationsPage() {
                 {testingId === t.id ? "Testing..." : "Test"}
               </button>
               <button
-                onClick={() => handleDelete(t.id)}
+                onClick={() => setDeleteTarget(t.id)}
                 style={{ fontSize: 12, padding: "4px 10px", color: "var(--red)", borderColor: "var(--red)" }}
               >
                 Delete
@@ -437,7 +462,15 @@ export default function IntegrationsPage() {
             )}
           </div>
         ))}
-      </div>
+      </div>}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete integration"
+        message="Are you sure you want to delete this integration? This action cannot be undone."
+        onConfirm={() => { if (deleteTarget) handleDelete(deleteTarget); }}
+        onClose={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

@@ -2,7 +2,11 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { Copy, Check } from "lucide-react";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/page-header";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { showSuccess, showError } from "@/lib/toast";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -32,6 +36,9 @@ export default function AgentChatPage() {
   const [sending, setSending] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [useStreaming, setUseStreaming] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -42,6 +49,8 @@ export default function AgentChatPage() {
       setMessages(msgs);
     } catch (err) {
       console.error("Failed to fetch messages:", err);
+    } finally {
+      setLoading(false);
     }
   }, [agentId]);
 
@@ -128,7 +137,7 @@ export default function AgentChatPage() {
           });
           await fetchMessages();
         } catch (err) {
-          console.error("Failed to send fallback message:", err);
+          showError("Failed to send message");
         }
       }
     } finally {
@@ -170,8 +179,57 @@ export default function AgentChatPage() {
     setStreamingText("");
   };
 
+  const handleCopy = async (messageId: number, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedId(messageId);
+      showSuccess("Copied!");
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      showError("Failed to copy to clipboard");
+    }
+  };
+
+  const handleNewConversation = async () => {
+    await fetch(`${API_URL}/api/agents/${agentId}/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sender: "dashboard" }),
+    });
+    setMessages([]);
+    setShowResetConfirm(false);
+  };
+
+  if (loading && !agent) {
+    return (
+      <div>
+        <div style={{ height: 20, width: 200, background: "var(--surface)", borderRadius: 6, marginBottom: 16 }} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 24 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <div style={{ width: "60%", height: 48, background: "var(--surface)", borderRadius: 12 }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-start" }}>
+            <div style={{ width: "55%", height: 64, background: "var(--surface)", borderRadius: 12 }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <div style={{ width: "50%", height: 40, background: "var(--surface)", borderRadius: 12 }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 90px)" }}>
+      <PageHeader
+        title="Chat"
+        breadcrumbs={[
+          { label: "Agents", href: "/agents" },
+          { label: agent?.name || agentId, href: `/agents/${agentId}` },
+          { label: "Chat" },
+        ]}
+      />
+
       {/* Header */}
       <div style={{
         display: "flex", alignItems: "center", gap: 12,
@@ -201,14 +259,7 @@ export default function AgentChatPage() {
             Stream
           </label>
           <button
-            onClick={async () => {
-              await fetch(`${API_URL}/api/agents/${agentId}/reset`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ sender: "dashboard" }),
-              });
-              setMessages([]);
-            }}
+            onClick={() => setShowResetConfirm(true)}
             style={{ fontSize: 12 }}
           >
             New Conversation
@@ -235,7 +286,22 @@ export default function AgentChatPage() {
                 background: isUser ? "var(--accent)" : "var(--surface)",
                 border: isUser ? "none" : "1px solid var(--border)",
                 color: isUser ? "#fff" : "var(--text)",
+                position: "relative",
               }}>
+                {!isUser && (
+                  <button
+                    onClick={() => handleCopy(m.id, m.content)}
+                    style={{
+                      position: "absolute", top: 6, right: 6,
+                      background: "none", border: "none", padding: 2,
+                      cursor: "pointer", color: "var(--text-muted)",
+                      opacity: 0.6, lineHeight: 1,
+                    }}
+                    title="Copy message"
+                  >
+                    {copiedId === m.id ? <Check size={14} /> : <Copy size={14} />}
+                  </button>
+                )}
                 <div style={{ fontSize: 13, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.content}</div>
                 <div style={{ fontSize: 10, marginTop: 4, opacity: 0.6, textAlign: isUser ? "right" : "left" }}>
                   {new Date(m.created_at).toLocaleTimeString()}
@@ -267,7 +333,9 @@ export default function AgentChatPage() {
               padding: "10px 14px", borderRadius: 12,
               background: "var(--surface)", border: "1px solid var(--border)",
             }}>
-              <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Thinking...</div>
+              <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                Thinking<span className="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
+              </div>
             </div>
           </div>
         )}
@@ -306,7 +374,29 @@ export default function AgentChatPage() {
         )}
       </div>
 
-      <style>{`@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }`}</style>
+      <ConfirmDialog
+        open={showResetConfirm}
+        onClose={() => setShowResetConfirm(false)}
+        onConfirm={handleNewConversation}
+        title="Start New Conversation?"
+        message="This will clear the current conversation history. This action cannot be undone."
+        confirmLabel="Clear & Start New"
+        confirmVariant="danger"
+      />
+
+      <style>{`
+        @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+        .thinking-dots span {
+          animation: bounce 1.4s infinite;
+          display: inline-block;
+        }
+        .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce {
+          0%, 80%, 100% { transform: translateY(0); }
+          40% { transform: translateY(-6px); }
+        }
+      `}</style>
     </div>
   );
 }

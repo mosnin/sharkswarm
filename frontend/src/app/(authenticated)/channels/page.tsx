@@ -2,6 +2,12 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
+import { CardListSkeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { showSuccess, showError } from "@/lib/toast";
+import { MessageSquare } from "lucide-react";
 
 interface Agent {
   id: string;
@@ -84,7 +90,7 @@ export default function ChannelsPage() {
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
   const [loggingOut, setLoggingOut] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const fetchAgents = useCallback(async () => {
     try {
@@ -110,6 +116,8 @@ export default function ChannelsPage() {
     } catch {
       setChannelStatuses({});
       setChannelConfigs({});
+    } finally {
+      setLoading(false);
     }
   }, [selectedAgentId]);
 
@@ -123,11 +131,6 @@ export default function ChannelsPage() {
       fetchChannelData();
     }
   }, [selectedAgentId, fetchChannelData]);
-
-  const showMessage = (text: string, type: "success" | "error") => {
-    setMessage({ text, type });
-    setTimeout(() => setMessage(null), 3000);
-  };
 
   const openConfig = (channelKey: string) => {
     if (activeChannel === channelKey) {
@@ -153,10 +156,10 @@ export default function ChannelsPage() {
           },
         }),
       });
-      showMessage("Channel configuration saved.", "success");
+      showSuccess("Channel configuration saved.");
       await fetchChannelData();
     } catch {
-      showMessage("Failed to save configuration.", "error");
+      showError("Failed to save configuration.");
     } finally {
       setSaving(false);
     }
@@ -170,10 +173,10 @@ export default function ChannelsPage() {
         method: "POST",
         body: JSON.stringify({ channel: channelKey }),
       });
-      showMessage(`Logged out of ${channelKey}.`, "success");
+      showSuccess(`Logged out of ${channelKey}.`);
       await fetchChannelData();
     } catch {
-      showMessage(`Failed to logout from ${channelKey}.`, "error");
+      showError(`Failed to logout from ${channelKey}.`);
     } finally {
       setLoggingOut(null);
     }
@@ -181,13 +184,6 @@ export default function ChannelsPage() {
 
   const updateField = (field: string, value: unknown) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const getStatusColor = (status: string | undefined) => {
-    if (!status || status === "not configured") return "var(--text-muted)";
-    if (status === "connected") return "var(--green)";
-    if (status === "disconnected") return "var(--red)";
-    return "var(--yellow)";
   };
 
   const getStatusLabel = (channelKey: string) => {
@@ -497,31 +493,7 @@ export default function ChannelsPage() {
 
   return (
     <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 24,
-        }}
-      >
-        <h1 style={{ fontSize: 24 }}>Messaging Channels</h1>
-      </div>
-
-      {message && (
-        <div
-          style={{
-            padding: "10px 16px",
-            marginBottom: 16,
-            borderRadius: 8,
-            fontSize: 13,
-            background: message.type === "success" ? "var(--green)" : "var(--red)",
-            color: "#fff",
-          }}
-        >
-          {message.text}
-        </div>
-      )}
+      <PageHeader title="Messaging Channels" description="Configure communication channels for your agents" />
 
       {/* Agent Selector */}
       <div style={{ ...cardStyle, marginBottom: 24 }}>
@@ -543,7 +515,13 @@ export default function ChannelsPage() {
       </div>
 
       {!selectedAgentId ? (
-        <p style={{ color: "var(--text-muted)" }}>Select an agent to manage its channels.</p>
+        <EmptyState
+          icon={<MessageSquare size={40} />}
+          title="Select an agent"
+          description="Choose an agent above to configure its messaging channels."
+        />
+      ) : loading && !channelStatuses ? (
+        <CardListSkeleton count={4} />
       ) : (
         <>
           {/* Channel Status Grid */}
@@ -558,7 +536,6 @@ export default function ChannelsPage() {
             {CHANNELS.map((ch) => {
               const status = channelStatuses[ch.key];
               const statusLabel = getStatusLabel(ch.key);
-              const statusColor = getStatusColor(status);
               const isActive = activeChannel === ch.key;
 
               return (
@@ -584,19 +561,9 @@ export default function ChannelsPage() {
                       <span style={{ fontSize: 20 }}>{CHANNEL_ICONS[ch.key]}</span>
                       <strong style={{ fontSize: 14 }}>{ch.label}</strong>
                     </div>
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        background: statusColor,
-                        display: "inline-block",
-                        flexShrink: 0,
-                      }}
-                    />
-                  </div>
-                  <div style={{ fontSize: 12, color: statusColor, marginBottom: 12 }}>
-                    {statusLabel}
+                    <Badge variant={status === "connected" ? "success" : status === "disconnected" ? "error" : "neutral"}>
+                      {statusLabel}
+                    </Badge>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button

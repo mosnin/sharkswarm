@@ -2,6 +2,11 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
+import { showSuccess, showError } from "@/lib/toast";
+import { CardListSkeleton } from "@/components/ui/skeleton";
+import { ErrorBlock } from "@/components/ui/error-block";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -89,6 +94,7 @@ export default function ModelsPage() {
   const [showAddProvider, setShowAddProvider] = useState(false);
   const [newProvider, setNewProvider] = useState({ name: "", baseUrl: "", apiKey: "" });
   const [savingProvider, setSavingProvider] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   /* ---- derived ---- */
   const selectedAgent = agents.find((a) => a.id === selectedAgentId) ?? null;
@@ -123,7 +129,9 @@ export default function ModelsPage() {
         setSelectedAgentId(data[0].id);
       }
     } catch {
-      // ignore
+      showError("Failed to load agents");
+    } finally {
+      setLoading(false);
     }
   }, [selectedAgentId]);
 
@@ -136,7 +144,7 @@ export default function ModelsPage() {
       setConfig(cfgData);
       setCatalog(catalogData);
     } catch {
-      // ignore
+      showError("Failed to load agent configuration");
     }
   }, []);
 
@@ -162,8 +170,9 @@ export default function ModelsPage() {
         body: JSON.stringify({ model: newModel }),
       });
       await fetchAgents();
+      showSuccess("Model switched successfully");
     } catch {
-      // ignore
+      showError("Failed to switch model");
     } finally {
       setSwitching(false);
     }
@@ -179,8 +188,9 @@ export default function ModelsPage() {
         body: JSON.stringify({ models: { providers: updatedProviders } }),
       });
       await fetchAgentData(selectedAgentId);
+      showSuccess("Provider configuration saved");
     } catch {
-      // ignore
+      showError("Failed to save provider configuration");
     } finally {
       setSavingProvider(null);
     }
@@ -205,8 +215,9 @@ export default function ModelsPage() {
       setNewProvider({ name: "", baseUrl: "", apiKey: "" });
       setShowAddProvider(false);
       await fetchAgentData(selectedAgentId);
+      showSuccess("Provider added successfully");
     } catch {
-      // ignore
+      showError("Failed to add provider");
     } finally {
       setSavingProvider(null);
     }
@@ -246,8 +257,11 @@ export default function ModelsPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 24, marginBottom: 24 }}>Models &amp; Providers</h1>
+      <PageHeader title="Models" description="AI model configuration and selection" />
 
+      {loading && <CardListSkeleton count={3} />}
+
+      {!loading && <>
       {/* ---- 1. Agent Selector ---- */}
       <div style={{ ...cardStyle, marginBottom: 24 }}>
         <label style={labelStyle}>Select Agent</label>
@@ -294,18 +308,9 @@ export default function ModelsPage() {
                 </div>
                 {currentMeta && (
                   <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                    <span
-                      style={{
-                        fontSize: 12,
-                        padding: "2px 8px",
-                        borderRadius: 4,
-                        background: currentMeta.reasoning ? "var(--green)" : "var(--surface)",
-                        color: currentMeta.reasoning ? "#fff" : "var(--text-muted)",
-                        border: currentMeta.reasoning ? "none" : "1px solid var(--border)",
-                      }}
-                    >
+                    <Badge variant={currentMeta.reasoning ? "success" : "neutral"}>
                       {currentMeta.reasoning ? "Reasoning" : "Standard"}
-                    </span>
+                    </Badge>
                     <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
                       Context: {fmtCtx(currentMeta.contextWindow)}
                     </span>
@@ -366,8 +371,8 @@ export default function ModelsPage() {
                       </div>
                     )}
                     {isActive && (
-                      <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 6, fontWeight: 600 }}>
-                        Active
+                      <div style={{ marginTop: 6 }}>
+                        <Badge variant="info">Active</Badge>
                       </div>
                     )}
                   </button>
@@ -514,9 +519,9 @@ export default function ModelsPage() {
                           </td>
                           <td style={{ padding: "8px 12px", textAlign: "center" }}>
                             {row.model.reasoning ? (
-                              <span style={{ color: "var(--green)", fontWeight: 600 }}>Yes</span>
+                              <Badge variant="success">Yes</Badge>
                             ) : (
-                              <span style={{ color: "var(--text-muted)" }}>No</span>
+                              <Badge variant="neutral">No</Badge>
                             )}
                           </td>
                           <td style={{ padding: "8px 12px", textAlign: "right" }}>
@@ -527,7 +532,7 @@ export default function ModelsPage() {
                           </td>
                           <td style={{ padding: "8px 12px", textAlign: "center" }}>
                             {isActive ? (
-                              <span style={{ fontSize: 12, color: "var(--accent)", fontWeight: 600 }}>Active</span>
+                              <Badge variant="info">Active</Badge>
                             ) : (
                               <button
                                 className="primary"
@@ -549,6 +554,7 @@ export default function ModelsPage() {
           </div>
         </>
       )}
+      </>}
     </div>
   );
 }

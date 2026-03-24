@@ -2,6 +2,14 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBlock } from "@/components/ui/error-block";
+import { CardListSkeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { showSuccess, showError } from "@/lib/toast";
+import { Calendar } from "lucide-react";
 
 interface Schedule {
   id: number;
@@ -59,6 +67,9 @@ export default function SchedulesPage() {
   const [cronJobs, setCronJobs] = useState<Record<string, CronJob[]>>({});
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<{ type: "schedule"; id: number } | { type: "cron"; agentId: string; jobId: string } | null>(null);
   const [activeTab, setActiveTab] = useState<"sharkswarm" | "openclaw">("sharkswarm");
   const [preset, setPreset] = useState("0 9 * * *");
   const [form, setForm] = useState({
@@ -71,7 +82,12 @@ export default function SchedulesPage() {
   const fetchSchedules = useCallback(async () => {
     try {
       setSchedules(await api<Schedule[]>("/api/schedules"));
-    } catch { /* ignore */ }
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load schedules");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const fetchCronJobs = useCallback(async (agentList: Agent[]) => {
@@ -113,43 +129,69 @@ export default function SchedulesPage() {
       setForm({ name: "", agent_id: "", cron_expr: "0 9 * * *", message: "" });
       setPreset("0 9 * * *");
       setShowCreate(false);
+      showSuccess("Schedule created successfully");
       await fetchSchedules();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Failed to create schedule");
     } finally {
       setSaving(false);
     }
   };
 
   const handleToggle = async (schedule: Schedule) => {
-    await api(`/api/schedules/${schedule.id}`, {
-      method: "PUT",
-      body: JSON.stringify({ enabled: !schedule.enabled }),
-    });
-    await fetchSchedules();
+    try {
+      await api(`/api/schedules/${schedule.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ enabled: !schedule.enabled }),
+      });
+      showSuccess(`Schedule ${schedule.enabled ? "paused" : "enabled"}`);
+      await fetchSchedules();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Failed to update schedule");
+    }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Delete this schedule?")) return;
-    await api(`/api/schedules/${id}`, { method: "DELETE" });
-    await fetchSchedules();
+    try {
+      await api(`/api/schedules/${id}`, { method: "DELETE" });
+      showSuccess("Schedule deleted");
+      await fetchSchedules();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Failed to delete schedule");
+    } finally {
+      setDeleteTarget(null);
+    }
   };
 
   const handleRun = async (id: number) => {
-    await api(`/api/schedules/${id}/run`, { method: "POST" });
-    await fetchSchedules();
+    try {
+      await api(`/api/schedules/${id}/run`, { method: "POST" });
+      showSuccess("Schedule triggered");
+      await fetchSchedules();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Failed to run schedule");
+    }
   };
 
   const handleCronRun = async (agentId: string, jobId: string) => {
     try {
       await api(`/api/agents/${agentId}/cron/${jobId}/run`, { method: "POST" });
-    } catch { /* ignore */ }
+      showSuccess("Cron job triggered");
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Failed to run cron job");
+    }
   };
 
   const handleCronDelete = async (agentId: string, jobId: string) => {
-    if (!confirm("Remove this OpenClaw cron job?")) return;
     try {
       await api(`/api/agents/${agentId}/cron/${jobId}`, { method: "DELETE" });
+      showSuccess("Cron job removed");
       await fetchCronJobs(agents);
-    } catch { /* ignore */ }
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Failed to remove cron job");
+    } finally {
+      setDeleteTarget(null);
+    }
   };
 
   const agentName = (id: string) => agents.find((a) => a.id === id)?.name || id;
@@ -160,12 +202,15 @@ export default function SchedulesPage() {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <h1 style={{ fontSize: 24 }}>Schedules</h1>
-        <button className="primary" onClick={() => setShowCreate(!showCreate)}>
-          {showCreate ? "Cancel" : "+ New Schedule"}
-        </button>
-      </div>
+      <PageHeader
+        title="Schedules"
+        description="Automated agent tasks on a schedule"
+        action={
+          <button className="primary" onClick={() => setShowCreate(!showCreate)}>
+            {showCreate ? "Cancel" : "+ New Schedule"}
+          </button>
+        }
+      />
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 0, marginBottom: 20, borderBottom: "1px solid var(--border)" }}>
@@ -243,11 +288,20 @@ export default function SchedulesPage() {
         </div>
       )}
 
+      {/* Loading / Error states */}
+      {loading && <CardListSkeleton count={3} />}
+      {!loading && error && <ErrorBlock message={error} onRetry={fetchSchedules} />}
+
       {/* SharkSwarm Schedules Tab */}
-      {activeTab === "sharkswarm" && (
+      {!loading && !error && activeTab === "sharkswarm" && (
         <>
           {schedules.length === 0 && !showCreate && (
-            <p style={{ color: "var(--text-muted)" }}>No schedules yet. Create one to automate agent tasks.</p>
+            <EmptyState
+              icon={<Calendar size={40} />}
+              title="No schedules yet"
+              description="Create one to automate agent tasks on a recurring basis."
+              action={{ label: "+ New Schedule", onClick: () => setShowCreate(true) }}
+            />
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {schedules.map((s) => (
@@ -255,9 +309,8 @@ export default function SchedulesPage() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: s.enabled ? "var(--green)" : "var(--text-muted)" }} />
                       <strong style={{ fontSize: 15 }}>{s.name}</strong>
-                      <span style={badgeStyle("var(--accent)")}>SharkSwarm</span>
+                      <Badge variant={s.enabled ? "success" : "neutral"}>{s.enabled ? "Enabled" : "Disabled"}</Badge>
                       <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: "var(--bg)", border: "1px solid var(--border)", fontFamily: "monospace" }}>
                         {s.cron_expr}
                       </span>
@@ -278,7 +331,7 @@ export default function SchedulesPage() {
                     <button onClick={() => handleToggle(s)} style={{ fontSize: 12, padding: "4px 10px", color: s.enabled ? "var(--yellow)" : "var(--green)", borderColor: s.enabled ? "var(--yellow)" : "var(--green)" }}>
                       {s.enabled ? "Pause" : "Enable"}
                     </button>
-                    <button onClick={() => handleDelete(s.id)} style={{ fontSize: 12, padding: "4px 10px", color: "var(--red)", borderColor: "var(--red)" }}>Delete</button>
+                    <button onClick={() => setDeleteTarget({ type: "schedule", id: s.id })} style={{ fontSize: 12, padding: "4px 10px", color: "var(--red)", borderColor: "var(--red)" }}>Delete</button>
                   </div>
                 </div>
               </div>
@@ -288,12 +341,14 @@ export default function SchedulesPage() {
       )}
 
       {/* OpenClaw Cron Jobs Tab */}
-      {activeTab === "openclaw" && (
+      {!loading && !error && activeTab === "openclaw" && (
         <>
           {allCronJobs.length === 0 && (
-            <p style={{ color: "var(--text-muted)" }}>
-              No OpenClaw cron jobs found. Cron jobs are configured directly on each agent&apos;s OpenClaw gateway.
-            </p>
+            <EmptyState
+              icon={<Calendar size={40} />}
+              title="No OpenClaw cron jobs"
+              description="Cron jobs are configured directly on each agent's OpenClaw gateway."
+            />
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {allCronJobs.map((job) => (
@@ -301,9 +356,8 @@ export default function SchedulesPage() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: job.enabled !== false ? "var(--green)" : "var(--text-muted)" }} />
                       <strong style={{ fontSize: 15 }}>{job.name || job.id}</strong>
-                      <span style={badgeStyle("var(--green)")}>OpenClaw</span>
+                      <Badge variant={job.enabled !== false ? "success" : "neutral"}>{job.enabled !== false ? "Enabled" : "Disabled"}</Badge>
                       <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: "var(--bg)", border: "1px solid var(--border)", fontFamily: "monospace" }}>
                         {job.schedule}
                       </span>
@@ -324,7 +378,7 @@ export default function SchedulesPage() {
                   </div>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 12 }}>
                     <button onClick={() => handleCronRun(job.agentId, job.id)} style={{ fontSize: 12, padding: "4px 10px" }}>Run</button>
-                    <button onClick={() => handleCronDelete(job.agentId, job.id)} style={{ fontSize: 12, padding: "4px 10px", color: "var(--red)", borderColor: "var(--red)" }}>Remove</button>
+                    <button onClick={() => setDeleteTarget({ type: "cron", agentId: job.agentId, jobId: job.id })} style={{ fontSize: 12, padding: "4px 10px", color: "var(--red)", borderColor: "var(--red)" }}>Remove</button>
                   </div>
                 </div>
               </div>
@@ -332,6 +386,22 @@ export default function SchedulesPage() {
           </div>
         </>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          if (deleteTarget.type === "schedule") handleDelete(deleteTarget.id);
+          else handleCronDelete(deleteTarget.agentId, deleteTarget.jobId);
+        }}
+        title={deleteTarget?.type === "cron" ? "Remove cron job?" : "Delete schedule?"}
+        message={deleteTarget?.type === "cron"
+          ? "This will remove the OpenClaw cron job. This action cannot be undone."
+          : "This will permanently delete this schedule. This action cannot be undone."}
+        confirmLabel={deleteTarget?.type === "cron" ? "Remove" : "Delete"}
+        confirmVariant="danger"
+      />
     </div>
   );
 }

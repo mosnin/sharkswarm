@@ -2,6 +2,12 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
+import { showSuccess, showError } from "@/lib/toast";
+import { CardListSkeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Zap } from "lucide-react";
 
 interface Agent {
   id: string;
@@ -54,6 +60,7 @@ export default function SkillsPage() {
   }>({ enabled: true, apiKey: "", env: "", config: "{}" });
   const [saving, setSaving] = useState(false);
   const [updatingSkillId, setUpdatingSkillId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const cardStyle = {
     background: "var(--surface)",
@@ -77,7 +84,9 @@ export default function SkillsPage() {
         setSelectedAgentId(data[0].id);
       }
     } catch {
-      // ignore
+      showError("Failed to load agents");
+    } finally {
+      setLoading(false);
     }
   }, [selectedAgentId]);
 
@@ -87,6 +96,7 @@ export default function SkillsPage() {
       const data = await api<Skill[]>(`/api/agents/${selectedAgentId}/skills`);
       setSkills(data);
     } catch {
+      showError("Failed to load skills");
       setSkills([]);
     }
   }, [selectedAgentId]);
@@ -97,6 +107,7 @@ export default function SkillsPage() {
       const data = await api<Tool[]>(`/api/agents/${selectedAgentId}/tools-catalog`);
       setTools(data);
     } catch {
+      showError("Failed to load tools catalog");
       setTools([]);
     }
   }, [selectedAgentId]);
@@ -107,6 +118,7 @@ export default function SkillsPage() {
       const data = await api<AgentConfig>(`/api/agents/${selectedAgentId}/config`);
       setAgentConfig(data);
     } catch {
+      showError("Failed to load agent configuration");
       setAgentConfig({});
     }
   }, [selectedAgentId]);
@@ -140,8 +152,9 @@ export default function SkillsPage() {
         prev.map((s) => (s.id === skillId ? { ...s, enabled } : s))
       );
       await fetchConfig();
+      showSuccess(`Skill ${enabled ? "enabled" : "disabled"}`);
     } catch {
-      // ignore
+      showError("Failed to update skill");
     }
   };
 
@@ -154,8 +167,9 @@ export default function SkillsPage() {
         body: JSON.stringify({ id: skillId }),
       });
       await fetchSkills();
+      showSuccess("Skill updated");
     } catch {
-      // ignore
+      showError("Failed to update skill");
     } finally {
       setUpdatingSkillId(null);
     }
@@ -171,8 +185,9 @@ export default function SkillsPage() {
       });
       setInstallInput("");
       await fetchSkills();
+      showSuccess("Skill installed successfully");
     } catch {
-      // ignore
+      showError("Failed to install skill");
     } finally {
       setInstalling(false);
     }
@@ -235,42 +250,20 @@ export default function SkillsPage() {
       await Promise.all([fetchSkills(), fetchConfig()]);
       setExpandedSkillId(null);
     } catch {
-      // ignore
+      showError("Failed to save skill settings");
     } finally {
       setSaving(false);
     }
   };
 
-  const sourceBadgeColor = (source: string) => {
-    switch (source) {
-      case "bundled":
-        return "var(--accent)";
-      case "managed":
-        return "var(--green)";
-      case "workspace":
-        return "var(--yellow)";
-      default:
-        return "var(--text-muted)";
-    }
-  };
-
-  const toolTypeBadgeColor = (type: string) => {
-    switch (type) {
-      case "built-in":
-        return "var(--accent)";
-      case "MCP":
-        return "var(--green)";
-      case "API":
-        return "var(--yellow)";
-      default:
-        return "var(--text-muted)";
-    }
-  };
 
   return (
     <div>
-      <h1 style={{ fontSize: 24, marginBottom: 24 }}>Skills</h1>
+      <PageHeader title="Skills" description="Agent capabilities and tool management" />
 
+      {loading && <CardListSkeleton count={3} />}
+
+      {!loading && <>
       {/* Agent Selector */}
       <div style={{ marginBottom: 24 }}>
         <label>
@@ -306,9 +299,9 @@ export default function SkillsPage() {
             <h2 style={{ fontSize: 18, marginBottom: 12 }}>Installed Skills</h2>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               {skills.length === 0 && (
-                <p style={{ color: "var(--text-muted)", gridColumn: "1 / -1" }}>
-                  No skills installed for this agent.
-                </p>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <EmptyState icon={<Zap size={40} />} title="No skills" description="Install skills to extend agent capabilities." />
+                </div>
               )}
               {skills.map((skill) => (
                 <div
@@ -346,19 +339,9 @@ export default function SkillsPage() {
                         }}
                       >
                         <strong style={{ fontSize: 15 }}>{skill.name}</strong>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            padding: "2px 6px",
-                            borderRadius: 4,
-                            background: sourceBadgeColor(skill.source),
-                            color: "#fff",
-                            textTransform: "uppercase",
-                            fontWeight: 600,
-                          }}
-                        >
+                        <Badge variant={skill.source === "bundled" ? "info" : skill.source === "managed" ? "success" : skill.source === "workspace" ? "warning" : "neutral"}>
                           {skill.source}
-                        </span>
+                        </Badge>
                       </div>
                       <p
                         style={{
@@ -598,19 +581,9 @@ export default function SkillsPage() {
                           {tool.description}
                         </td>
                         <td style={{ padding: "8px 12px" }}>
-                          <span
-                            style={{
-                              fontSize: 11,
-                              padding: "2px 6px",
-                              borderRadius: 4,
-                              background: toolTypeBadgeColor(tool.type),
-                              color: "#fff",
-                              textTransform: "uppercase",
-                              fontWeight: 600,
-                            }}
-                          >
+                          <Badge variant={tool.type === "built-in" ? "info" : tool.type === "MCP" ? "success" : tool.type === "API" ? "warning" : "neutral"}>
                             {tool.type}
-                          </span>
+                          </Badge>
                         </td>
                       </tr>
                     ))}
@@ -649,6 +622,7 @@ export default function SkillsPage() {
           </section>
         </>
       )}
+      </>}
     </div>
   );
 }

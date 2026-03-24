@@ -3,6 +3,11 @@
 import MessageForm from "@/components/MessageForm";
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
+import { CardListSkeleton } from "@/components/ui/skeleton";
+import { showSuccess, showError } from "@/lib/toast";
+import { Mail } from "lucide-react";
 
 interface Agent {
   id: string;
@@ -21,20 +26,23 @@ interface Message {
 export default function MessagesPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const fetchAgents = useCallback(async () => {
     try {
       setAgents(await api<Agent[]>("/api/agents"));
-    } catch {
-      // ignore
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Failed to load agents");
     }
   }, []);
 
   const fetchMessages = useCallback(async () => {
     try {
       setMessages(await api<Message[]>("/api/messages"));
-    } catch {
-      // ignore
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Failed to load messages");
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -55,13 +63,20 @@ export default function MessagesPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 24, marginBottom: 24 }}>Messages</h1>
+      <PageHeader title="Messages" description="Inter-agent communication" />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         <MessageForm agents={agents} onSend={handleSend} />
         <div style={{ background: "var(--surface)", borderRadius: 8, border: "1px solid var(--border)", padding: 16 }}>
           <h2 style={{ fontSize: 16, marginBottom: 12 }}>History</h2>
           <div style={{ maxHeight: 400, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, fontFamily: "monospace", fontSize: 13 }}>
-            {messages.length === 0 && <p style={{ color: "var(--text-muted)" }}>No messages yet</p>}
+            {loading && <CardListSkeleton count={3} />}
+            {!loading && messages.length === 0 && (
+              <EmptyState
+                icon={<Mail size={40} />}
+                title="No messages yet"
+                description="Messages between agents will appear here."
+              />
+            )}
             {messages.map((m) => (
               <div key={m.id} style={{ padding: "8px 10px", background: "var(--bg)", borderRadius: 4, border: "1px solid var(--border)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>

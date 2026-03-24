@@ -2,6 +2,13 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/page-header";
+import { CardListSkeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Badge } from "@/components/ui/badge";
+import { ErrorBlock } from "@/components/ui/error-block";
+import { showSuccess, showError } from "@/lib/toast";
+import { Target } from "lucide-react";
 
 interface Mission {
   id: string;
@@ -85,16 +92,24 @@ const MISSION_TYPES = [
 const RISK_LEVELS = ["low", "medium", "high", "critical"];
 const QUALITY_BARS = ["minimal", "standard", "high", "maximum"];
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: "#6b7280",
-  compiling: "#f59e0b",
-  ready: "#3b82f6",
-  active: "#10b981",
-  paused: "#f59e0b",
-  completed: "#10b981",
-  failed: "#ef4444",
-  aborted: "#6b7280",
-};
+function statusVariant(status: string): "success" | "error" | "warning" | "info" | "neutral" {
+  switch (status) {
+    case "active":
+    case "completed":
+      return "success";
+    case "failed":
+      return "error";
+    case "compiling":
+    case "paused":
+      return "warning";
+    case "ready":
+      return "info";
+    case "draft":
+    case "aborted":
+    default:
+      return "neutral";
+  }
+}
 
 const labelStyle = { fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 } as const;
 
@@ -106,6 +121,7 @@ export default function MissionsPage() {
   const [selectedMission, setSelectedMission] = useState<MissionFull | null>(null);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [actionLoading, setActionLoading] = useState("");
+  const [error, setError] = useState("");
 
   const [form, setForm] = useState({
     title: "",
@@ -118,9 +134,11 @@ export default function MissionsPage() {
 
   const fetchMissions = useCallback(async () => {
     try {
+      setError("");
       setMissions(await api<Mission[]>("/api/glorb/missions"));
     } catch (err) {
       console.error("Failed to fetch missions:", err);
+      setError("Failed to load missions");
     } finally {
       setLoading(false);
     }
@@ -142,8 +160,9 @@ export default function MissionsPage() {
       setForm({ title: "", objective: "", mission_type: "exploration", risk_level: "medium", quality_bar: "standard", budget_tokens: "" });
       setShowCreate(false);
       fetchMissions();
+      showSuccess("Mission created");
     } catch (err) {
-      alert("Failed to create mission");
+      showError("Failed to create mission");
     } finally {
       setCreating(false);
     }
@@ -164,7 +183,7 @@ export default function MissionsPage() {
       });
       setPreview(result);
     } catch {
-      alert("Preview failed");
+      showError("Failed to generate routing preview");
     }
   };
 
@@ -173,7 +192,7 @@ export default function MissionsPage() {
       const full = await api<MissionFull>(`/api/glorb/missions/${id}/full`);
       setSelectedMission(full);
     } catch {
-      alert("Failed to load mission details");
+      showError("Failed to load mission details");
     }
   };
 
@@ -187,7 +206,7 @@ export default function MissionsPage() {
       await loadMission(id);
       fetchMissions();
     } catch (err) {
-      alert(`Action ${action} failed: ${err}`);
+      showError(`Mission action failed: ${err}`);
     } finally {
       setActionLoading("");
     }
@@ -195,12 +214,11 @@ export default function MissionsPage() {
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <h1 style={{ margin: 0 }}>GLORB Missions</h1>
-        <button className="btn" onClick={() => { setShowCreate(!showCreate); setPreview(null); }}>
-          {showCreate ? "Cancel" : "+ New Mission"}
-        </button>
-      </div>
+      <PageHeader
+        title="GLORB Missions"
+        description="Multi-agent mission orchestration"
+        action={<button className="primary" onClick={() => { setShowCreate(!showCreate); setPreview(null); }}>{showCreate ? "Cancel" : "+ New Mission"}</button>}
+      />
 
       {showCreate && (
         <div className="card" style={{ marginBottom: 24, padding: 20 }}>
@@ -288,9 +306,16 @@ export default function MissionsPage() {
       )}
 
       {loading ? (
-        <p style={{ color: "var(--text-muted)" }}>Loading missions...</p>
+        <CardListSkeleton count={3} />
+      ) : error ? (
+        <ErrorBlock message={error} onRetry={fetchMissions} />
       ) : missions.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>No missions yet. Create one to get started.</p>
+        <EmptyState
+          icon={<Target size={40} />}
+          title="No missions yet"
+          description="Create your first mission to start orchestrating multi-agent workflows."
+          action={{ label: "Create Mission", onClick: () => setShowCreate(true) }}
+        />
       ) : (
         <div style={{ display: "grid", gap: 12 }}>
           {missions.map(m => (
@@ -298,9 +323,7 @@ export default function MissionsPage() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <strong>{m.title}</strong>
-                  <span style={{ marginLeft: 12, fontSize: 12, padding: "2px 8px", borderRadius: 4, background: STATUS_COLORS[m.status] || "#6b7280", color: "white" }}>
-                    {m.status}
-                  </span>
+                  <Badge variant={statusVariant(m.status)}>{m.status}</Badge>
                   <span style={{ marginLeft: 8, fontSize: 12, color: "var(--text-muted)" }}>{m.mission_type}</span>
                 </div>
                 <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
@@ -345,9 +368,7 @@ function MissionDetail({
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <h2 style={{ margin: 0 }}>{mission.title}</h2>
-          <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 4, background: STATUS_COLORS[mission.status] || "#6b7280", color: "white" }}>
-            {mission.status}
-          </span>
+          <Badge variant={statusVariant(mission.status)}>{mission.status}</Badge>
           <span style={{ marginLeft: 8, fontSize: 12, color: "var(--text-muted)" }}>
             {mission.mission_type} | {mission.policy} | risk: {mission.risk_level} | quality: {mission.quality_bar}
           </span>

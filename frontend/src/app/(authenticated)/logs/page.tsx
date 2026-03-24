@@ -3,6 +3,14 @@
 import LogViewer from "@/components/LogViewer";
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
+import { TableSkeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBlock } from "@/components/ui/error-block";
+import { showError } from "@/lib/toast";
+import { FileText } from "lucide-react";
+import { Pagination } from "@/components/ui/pagination";
 
 interface AgentInfo {
   id: string;
@@ -23,8 +31,13 @@ export default function LogsPage() {
   const [filterAgent, setFilterAgent] = useState("");
   const [filterLevel, setFilterLevel] = useState("");
   const [filterSince, setFilterSince] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [page, setPage] = useState(1);
+  const LOGS_PER_PAGE = 50;
 
   const fetchLogs = useCallback(async () => {
+    setError("");
     try {
       const params = new URLSearchParams();
       if (filterAgent) params.set("agent", filterAgent);
@@ -33,9 +46,14 @@ export default function LogsPage() {
       const qs = params.toString();
       setLogs(await api<LogEntry[]>(`/api/logs/filtered${qs ? `?${qs}` : ""}`));
     } catch {
-      // ignore
+      setError("Failed to load logs");
+    } finally {
+      setLoading(false);
     }
   }, [filterAgent, filterLevel, filterSince]);
+
+  const totalPages = Math.ceil(logs.length / LOGS_PER_PAGE);
+  const paginatedLogs = logs.slice((page - 1) * LOGS_PER_PAGE, page * LOGS_PER_PAGE);
 
   useEffect(() => {
     api<AgentInfo[]>("/api/agents").then(setAgents).catch(() => {});
@@ -49,13 +67,13 @@ export default function LogsPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 24, marginBottom: 16 }}>Agent Logs</h1>
+      <PageHeader title="Agent Logs" description={`${logs.length} entries`} />
 
       {/* Filters */}
       <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
         <select
           value={filterAgent}
-          onChange={(e) => setFilterAgent(e.target.value)}
+          onChange={(e) => { setFilterAgent(e.target.value); setPage(1); }}
           style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
         >
           <option value="">All agents</option>
@@ -66,7 +84,7 @@ export default function LogsPage() {
 
         <select
           value={filterLevel}
-          onChange={(e) => setFilterLevel(e.target.value)}
+          onChange={(e) => { setFilterLevel(e.target.value); setPage(1); }}
           style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
         >
           <option value="">All levels</option>
@@ -79,7 +97,7 @@ export default function LogsPage() {
         <input
           type="datetime-local"
           value={filterSince}
-          onChange={(e) => setFilterSince(e.target.value)}
+          onChange={(e) => { setFilterSince(e.target.value); setPage(1); }}
           style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
         />
 
@@ -89,6 +107,7 @@ export default function LogsPage() {
               setFilterAgent("");
               setFilterLevel("");
               setFilterSince("");
+              setPage(1);
             }}
             style={{ fontSize: 13, padding: "6px 12px" }}
           >
@@ -97,11 +116,22 @@ export default function LogsPage() {
         )}
       </div>
 
-      <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12 }}>
-        {logs.length} log entries
-      </div>
-
-      <LogViewer logs={logs} />
+      {loading ? (
+        <TableSkeleton rows={8} cols={3} />
+      ) : error ? (
+        <ErrorBlock message={error} onRetry={fetchLogs} />
+      ) : logs.length === 0 ? (
+        <EmptyState
+          icon={<FileText size={40} />}
+          title="No logs yet"
+          description="Logs will appear as your agents process tasks."
+        />
+      ) : (
+        <>
+          <LogViewer logs={paginatedLogs} />
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+        </>
+      )}
     </div>
   );
 }
