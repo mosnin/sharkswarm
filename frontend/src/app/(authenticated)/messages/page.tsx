@@ -2,7 +2,7 @@
 
 import MessageForm from "@/components/MessageForm";
 import { useEffect, useState, useCallback } from "react";
-import { api } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { CardListSkeleton } from "@/components/ui/skeleton";
@@ -24,6 +24,7 @@ interface Message {
 }
 
 export default function MessagesPage() {
+  const api = useApi();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);

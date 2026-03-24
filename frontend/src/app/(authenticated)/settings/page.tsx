@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { api } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 import { PageHeader } from "@/components/page-header";
 import { showSuccess, showError } from "@/lib/toast";
 
@@ -69,6 +69,8 @@ function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
 /* ── page ─────────────────────────────────────────────────────────── */
 
 export default function SettingsPage() {
+  const api = useApi();
+
   /* ── agent selector state ──────────────────────────────────────── */
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");

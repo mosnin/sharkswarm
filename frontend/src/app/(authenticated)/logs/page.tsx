@@ -2,7 +2,7 @@
 
 import LogViewer from "@/components/LogViewer";
 import { useEffect, useState, useCallback } from "react";
-import { api } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -26,6 +26,7 @@ interface LogEntry {
 }
 
 export default function LogsPage() {
+  const api = useApi();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [filterAgent, setFilterAgent] = useState("");

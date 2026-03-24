@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Copy, Check } from "lucide-react";
-import { api } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 import { PageHeader } from "@/components/page-header";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { showSuccess, showError } from "@/lib/toast";
@@ -28,6 +28,7 @@ interface AgentInfo {
 export default function AgentChatPage() {
   const params = useParams();
   const router = useRouter();
+  const api = useApi();
   const agentId = params.id as string;
 
   const [agent, setAgent] = useState<AgentInfo | null>(null);

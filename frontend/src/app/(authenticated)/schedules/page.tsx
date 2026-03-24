@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { api } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -62,6 +62,7 @@ const badgeStyle = (color: string) => ({
 });
 
 export default function SchedulesPage() {
+  const api = useApi();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [cronJobs, setCronJobs] = useState<Record<string, CronJob[]>>({});

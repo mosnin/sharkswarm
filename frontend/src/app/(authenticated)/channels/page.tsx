@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { api } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { CardListSkeleton } from "@/components/ui/skeleton";
@@ -82,6 +82,7 @@ function getDefaultConfig(channel: string): Record<string, unknown> {
 }
 
 export default function ChannelsPage() {
+  const api = useApi();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [channelStatuses, setChannelStatuses] = useState<ChannelStatus>({});

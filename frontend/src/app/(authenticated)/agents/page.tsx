@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Bot, Plus } from "lucide-react";
-import { api } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 import { showSuccess, showError } from "@/lib/toast";
 import { PageHeader } from "@/components/page-header";
 import { FilterBar } from "@/components/ui/filter-bar";
@@ -31,6 +31,7 @@ const MODELS = [
 
 export default function AgentsPage() {
   const router = useRouter();
+  const api = useApi();
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);

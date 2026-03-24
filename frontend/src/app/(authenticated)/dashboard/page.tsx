@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 import { PageHeader } from "@/components/page-header";
 import { StatCardsSkeleton, CardListSkeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -47,6 +47,7 @@ interface Mission {
 type DashboardState = "loading" | "empty" | "success" | "error";
 
 export default function DashboardPage() {
+  const api = useApi();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);

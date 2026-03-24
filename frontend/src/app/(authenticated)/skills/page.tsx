@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { api } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { showSuccess, showError } from "@/lib/toast";
@@ -44,6 +44,7 @@ interface AgentConfig {
 }
 
 export default function SkillsPage() {
+  const api = useApi();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [skills, setSkills] = useState<Skill[]>([]);

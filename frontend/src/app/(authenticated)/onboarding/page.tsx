@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bot, Users, Zap, Rocket, ArrowRight, ArrowLeft } from "lucide-react";
-import { api } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 
 interface StepProps {
   onNext: (data: Record<string, string>) => void;
@@ -113,6 +113,7 @@ function WorkspaceStep({ onNext, onBack, context }: StepProps) {
 }
 
 function FirstAgentStep({ onNext, onBack }: StepProps) {
+  const api = useApi();
   const [agentName, setAgentName] = useState("");
   const [creating, setCreating] = useState(false);
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 
 interface AgentConfig {
   id: string;
@@ -24,6 +24,7 @@ interface ToolIntegration {
 export default function AgentConfigPage() {
   const params = useParams();
   const router = useRouter();
+  const api = useApi();
   const agentId = params.id as string;
 
   const [config, setConfig] = useState<AgentConfig | null>(null);

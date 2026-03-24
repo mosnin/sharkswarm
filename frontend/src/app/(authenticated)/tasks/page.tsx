@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { api } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -34,6 +34,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function TasksPage() {
+  const api = useApi();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [filterStatus, setFilterStatus] = useState("");

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { api } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -84,6 +84,7 @@ const emptyMcp: NewMcpServer = {
 };
 
 export default function IntegrationsPage() {
+  const api = useApi();
   const [integrations, setIntegrations] = useState<ToolIntegration[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [formType, setFormType] = useState<"api" | "mcp">("api");

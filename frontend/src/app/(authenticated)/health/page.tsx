@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { api } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { StatCardsSkeleton, CardListSkeleton } from "@/components/ui/skeleton";
@@ -36,6 +36,7 @@ const cardStyle = {
 } as const;
 
 export default function HealthPage() {
+  const api = useApi();
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [error, setError] = useState("");
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
