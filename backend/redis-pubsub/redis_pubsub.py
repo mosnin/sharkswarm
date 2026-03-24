@@ -50,13 +50,16 @@ def get_pg_pool() -> psycopg2.pool.SimpleConnectionPool:
 
 # ── Publish helper (importable) ──────────────────────────────────
 def publish(from_agent: str, to_agent: str, message: str) -> None:
-    """Publish a message to the target agent's Redis inbox channel."""
+    """Publish a message to the target agent's Redis inbox channel.
+
+    Note: The bridge daemon will persist the message when it receives it
+    from Redis, so we only publish here and do NOT also persist directly.
+    """
     payload = json.dumps(
         {"from_agent": from_agent, "to_agent": to_agent, "message": message}
     )
     channel = f"agent:{to_agent}:inbox"
     get_redis().publish(channel, payload)
-    _persist_message(from_agent, to_agent, channel, message)
     print(f"[pub] {from_agent} → {to_agent}: {message[:80]}")
 
 

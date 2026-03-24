@@ -42,8 +42,8 @@ CREATE TABLE IF NOT EXISTS schedules (
     cron_expr   VARCHAR(128) NOT NULL,
     message     TEXT         NOT NULL,
     enabled     BOOLEAN      NOT NULL DEFAULT TRUE,
-    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    last_run    TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 -- Indexes

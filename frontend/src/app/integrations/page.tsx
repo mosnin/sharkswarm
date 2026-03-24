@@ -82,6 +82,7 @@ export default function IntegrationsPage() {
   const [apiForm, setApiForm] = useState<NewApiTool>({ ...emptyApi });
   const [mcpForm, setMcpForm] = useState<NewMcpServer>({ ...emptyMcp });
   const [testResult, setTestResult] = useState<Record<string, unknown> | null>(null);
+  const [testedId, setTestedId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
 
   const fetchIntegrations = useCallback(async () => {
@@ -144,6 +145,7 @@ export default function IntegrationsPage() {
 
   const handleTest = async (id: string) => {
     setTestingId(id);
+    setTestedId(id);
     setTestResult(null);
     try {
       const result = await api<Record<string, unknown>>(`/api/integrations/${id}/test`, {
@@ -417,7 +419,7 @@ export default function IntegrationsPage() {
               </button>
             </div>
 
-            {testResult && testingId === null && (
+            {testResult && testingId === null && testedId === t.id && (
               <div
                 style={{
                   marginTop: 8,

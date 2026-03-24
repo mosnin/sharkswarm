@@ -25,6 +25,18 @@ app.use(
 );
 app.use(express.json());
 
+// Async route error wrapper — catches unhandled rejections and sends 500
+const wrap =
+  (fn: (req: express.Request, res: express.Response) => Promise<unknown>) =>
+  (req: express.Request, res: express.Response) => {
+    fn(req, res).catch((err: unknown) => {
+      console.error("Unhandled route error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Internal server error" });
+      }
+    });
+  };
+
 // --------------- Health ---------------
 
 app.get("/api/health", (_req, res) => {
@@ -33,7 +45,7 @@ app.get("/api/health", (_req, res) => {
 
 // --------------- Agents ---------------
 
-app.get("/api/agents", async (_req, res) => {
+app.get("/api/agents", wrap(async (_req, res) => {
   const agents = await getAllAgents();
 
   const results = await Promise.all(
@@ -61,13 +73,13 @@ app.get("/api/agents", async (_req, res) => {
   );
 
   res.json(results);
-});
+}));
 
-app.get("/api/agents/:id", async (req, res) => {
+app.get("/api/agents/:id", wrap(async (req, res) => {
   const agent = await getAgent(req.params.id);
   if (!agent) return res.status(404).json({ error: "Agent not found" });
   res.json(agent);
-});
+}));
 
 app.post("/api/agents", async (req, res) => {
   const { name, systemPrompt, model, tools } = req.body;
@@ -87,19 +99,19 @@ app.post("/api/agents", async (req, res) => {
   }
 });
 
-app.put("/api/agents/:id", async (req, res) => {
+app.put("/api/agents/:id", wrap(async (req, res) => {
   const updated = await updateAgent(req.params.id, req.body);
   if (!updated) return res.status(404).json({ error: "Agent not found" });
   res.json(updated);
-});
+}));
 
-app.delete("/api/agents/:id", async (req, res) => {
+app.delete("/api/agents/:id", wrap(async (req, res) => {
   const ok = await deleteAgent(req.params.id);
   if (!ok) return res.status(404).json({ error: "Agent not found" });
   res.json({ success: true });
-});
+}));
 
-app.post("/api/agents/:id/reset", async (req, res) => {
+app.post("/api/agents/:id/reset", wrap(async (req, res) => {
   const agent = await getAgent(req.params.id);
   if (!agent) return res.status(404).json({ error: "Agent not found" });
   try {
@@ -116,7 +128,7 @@ app.post("/api/agents/:id/reset", async (req, res) => {
   } catch {
     res.status(502).json({ error: "Agent unreachable" });
   }
-});
+}));
 
 // --------------- Messages ---------------
 
@@ -137,18 +149,18 @@ app.post("/api/send-message", async (req, res) => {
   }
 });
 
-app.get("/api/messages", async (req, res) => {
+app.get("/api/messages", wrap(async (req, res) => {
   const limit = Number(req.query.limit) || 50;
   const rows = await query(
     `SELECT * FROM messages ORDER BY created_at DESC LIMIT $1`,
     [limit]
   );
   res.json(rows);
-});
+}));
 
 // --------------- Logs ---------------
 
-app.get("/api/logs", async (req, res) => {
+app.get("/api/logs", wrap(async (req, res) => {
   const limit = Number(req.query.limit) || 50;
   const type = (req.query.type as string) || "agent_logs";
 
@@ -165,11 +177,11 @@ app.get("/api/logs", async (req, res) => {
     [limit]
   );
   res.json(rows);
-});
+}));
 
 // --------------- Tasks ---------------
 
-app.get("/api/tasks", async (req, res) => {
+app.get("/api/tasks", wrap(async (req, res) => {
   const limit = Number(req.query.limit) || 100;
   const status = req.query.status as string | undefined;
   const agent = req.query.agent as string | undefined;
@@ -193,9 +205,9 @@ app.get("/api/tasks", async (req, res) => {
 
   const rows = await query(sql, params);
   res.json(rows);
-});
+}));
 
-app.post("/api/tasks", async (req, res) => {
+app.post("/api/tasks", wrap(async (req, res) => {
   const { from_agent, to_agent, message } = req.body;
   if (!from_agent || !to_agent || !message) {
     return res.status(400).json({ error: "from_agent, to_agent, and message are required" });
@@ -205,9 +217,9 @@ app.post("/api/tasks", async (req, res) => {
     [from_agent, to_agent, message]
   );
   res.status(201).json(rows[0]);
-});
+}));
 
-app.put("/api/tasks/:id", async (req, res) => {
+app.put("/api/tasks/:id", wrap(async (req, res) => {
   const { status, result } = req.body;
   const rows = await query(
     `UPDATE tasks SET status = COALESCE($1, status), result = COALESCE($2, result), updated_at = NOW()
@@ -216,11 +228,11 @@ app.put("/api/tasks/:id", async (req, res) => {
   );
   if (!rows.length) return res.status(404).json({ error: "Task not found" });
   res.json(rows[0]);
-});
+}));
 
 // --------------- Agent Conversation History ---------------
 
-app.get("/api/agents/:id/messages", async (req, res) => {
+app.get("/api/agents/:id/messages", wrap(async (req, res) => {
   const agentId = req.params.id;
   const limit = Number(req.query.limit) || 100;
   const rows = await query(
@@ -231,11 +243,11 @@ app.get("/api/agents/:id/messages", async (req, res) => {
     [agentId, limit]
   );
   res.json(rows);
-});
+}));
 
 // --------------- Enhanced Logs ---------------
 
-app.get("/api/logs/filtered", async (req, res) => {
+app.get("/api/logs/filtered", wrap(async (req, res) => {
   const limit = Number(req.query.limit) || 100;
   const agent = req.query.agent as string | undefined;
   const level = req.query.level as string | undefined;
@@ -264,11 +276,11 @@ app.get("/api/logs/filtered", async (req, res) => {
 
   const rows = await query(sql, params);
   res.json(rows);
-});
+}));
 
 // --------------- System Health ---------------
 
-app.get("/api/health/system", async (_req, res) => {
+app.get("/api/health/system", wrap(async (_req, res) => {
   const agents = await getAllAgents();
 
   const agentHealth = await Promise.all(
@@ -333,7 +345,7 @@ app.get("/api/health/system", async (_req, res) => {
       (taskStats as { status: string; count: number }[]).map((r) => [r.status, r.count])
     ),
   });
-});
+}));
 
 // --------------- Tool Integrations ---------------
 
@@ -434,12 +446,12 @@ app.delete("/api/agents/:id/integrations/:integrationId", (req, res) => {
 
 // --------------- Schedules ---------------
 
-app.get("/api/schedules", async (_req, res) => {
+app.get("/api/schedules", wrap(async (_req, res) => {
   const rows = await query("SELECT * FROM schedules ORDER BY created_at DESC");
   res.json(rows);
-});
+}));
 
-app.post("/api/schedules", async (req, res) => {
+app.post("/api/schedules", wrap(async (req, res) => {
   const { name, agent_id, cron_expr, message } = req.body;
   if (!name || !agent_id || !cron_expr || !message) {
     return res.status(400).json({ error: "name, agent_id, cron_expr, and message are required" });
@@ -449,9 +461,9 @@ app.post("/api/schedules", async (req, res) => {
     [name, agent_id, cron_expr, message]
   );
   res.status(201).json(rows[0]);
-});
+}));
 
-app.put("/api/schedules/:id", async (req, res) => {
+app.put("/api/schedules/:id", wrap(async (req, res) => {
   const { name, agent_id, cron_expr, message, enabled } = req.body;
   const rows = await query(
     `UPDATE schedules
@@ -465,15 +477,15 @@ app.put("/api/schedules/:id", async (req, res) => {
   );
   if (!rows.length) return res.status(404).json({ error: "Schedule not found" });
   res.json(rows[0]);
-});
+}));
 
-app.delete("/api/schedules/:id", async (req, res) => {
+app.delete("/api/schedules/:id", wrap(async (req, res) => {
   await query("DELETE FROM schedules WHERE id = $1", [req.params.id]);
   res.json({ success: true });
-});
+}));
 
 // Run a schedule immediately (manual trigger)
-app.post("/api/schedules/:id/run", async (req, res) => {
+app.post("/api/schedules/:id/run", wrap(async (req, res) => {
   const rows = await query("SELECT * FROM schedules WHERE id = $1", [req.params.id]);
   if (!rows.length) return res.status(404).json({ error: "Schedule not found" });
   const schedule = rows[0] as { agent_id: string; message: string; name: string; id: number };
@@ -485,7 +497,7 @@ app.post("/api/schedules/:id/run", async (req, res) => {
     ["scheduler", "info", `Manual trigger: "${schedule.name}" → ${schedule.agent_id}`]
   );
   res.json({ success: true });
-});
+}));
 
 // --------------- OpenClaw Gateway Proxy ---------------
 // These endpoints proxy JSON-RPC calls to individual OpenClaw agent gateways
@@ -732,7 +744,7 @@ app.get("/api/agents/:id/tools-catalog", async (req, res) => {
 });
 
 // Chat send via gateway (for streaming support)
-app.post("/api/agents/:id/chat/send", async (req, res) => {
+app.post("/api/agents/:id/chat/send", wrap(async (req, res) => {
   const agent = await getAgent(req.params.id);
   if (!agent) return res.status(404).json({ error: "Agent not found" });
 
@@ -796,7 +808,7 @@ app.post("/api/agents/:id/chat/send", async (req, res) => {
 
   // Safety timeout
   setTimeout(cleanup, 120000);
-});
+}));
 
 // --------------- Start ---------------
 

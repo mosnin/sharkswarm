@@ -56,6 +56,7 @@ export async function callAgentGateway(
 
     ws.on("error", (err) => {
       clearTimeout(timer);
+      ws.close();
       reject(err);
     });
   });
