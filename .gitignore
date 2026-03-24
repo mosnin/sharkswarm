@@ -15,6 +15,9 @@ backend/agent2/.env
 # Cloned NanoClaw source (built by Docker)
 backend/nanoclaw/
 
+# GLORB OS framework (cloned from mosnin/glorbs)
+backend/glorbs/
+
 # Agent runtime data
 backend/agent*/workspace/
 backend/agent*/memory/
