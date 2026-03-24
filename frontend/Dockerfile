@@ -3,8 +3,8 @@ FROM node:22-alpine AS base
 # ── Install dependencies ──────────────────────────────────────────
 FROM base AS deps
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 
 # ── Build ─────────────────────────────────────────────────────────
 FROM base AS builder
@@ -13,7 +13,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_PUBLIC_API_URL=http://localhost:4000
 ENV DOCKER_BUILD=1
-RUN npm run build
+RUN npx prisma generate && npm run build
 
 # ── Production ────────────────────────────────────────────────────
 FROM base AS runner
