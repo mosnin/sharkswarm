@@ -80,6 +80,7 @@ export default function AgentChatPage() {
       const res = await fetch(`${API_URL}/api/agents/${agentId}/chat/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ message: msg }),
         signal: abortRef.current.signal,
       });
@@ -195,6 +196,7 @@ export default function AgentChatPage() {
     await fetch(`${API_URL}/api/agents/${agentId}/reset`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ sender: "dashboard" }),
     });
     setMessages([]);

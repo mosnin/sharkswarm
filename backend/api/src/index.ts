@@ -779,7 +779,16 @@ app.post("/api/agents/:id/chat/send", wrap(async (req, res) => {
   const agent = await getAgent(req.params.id);
   if (!agent) return res.status(404).json({ error: "Agent not found" });
 
+  const userMessage = req.body.message || req.body.text;
+  if (!userMessage) return res.status(400).json({ error: "message is required" });
+
   const wsUrl = agent.internalUrl.replace(/^http/, "ws");
+
+  // Persist the user's message to Postgres
+  await query(
+    `INSERT INTO messages (from_agent, to_agent, content) VALUES ($1, $2, $3)`,
+    ["dashboard", req.params.id, userMessage]
+  );
 
   // Set up SSE streaming to the client
   res.writeHead(200, {
@@ -791,11 +800,23 @@ app.post("/api/agents/:id/chat/send", wrap(async (req, res) => {
   const ws = new (await import("ws")).default(wsUrl);
   const sendId = Date.now();
   let closed = false;
+  let fullResponse = "";
 
-  const cleanup = () => {
+  const cleanup = async () => {
     if (!closed) {
       closed = true;
       ws.close();
+      // Persist the agent's response if we got one
+      if (fullResponse.trim()) {
+        try {
+          await query(
+            `INSERT INTO messages (from_agent, to_agent, content) VALUES ($1, $2, $3)`,
+            [req.params.id, "dashboard", fullResponse.trim()]
+          );
+        } catch (err) {
+          console.error("Failed to persist agent response:", err);
+        }
+      }
       res.end();
     }
   };
@@ -807,7 +828,7 @@ app.post("/api/agents/:id/chat/send", wrap(async (req, res) => {
         id: sendId,
         method: "chat.send",
         params: {
-          text: req.body.message || req.body.text,
+          text: userMessage,
           sessionKey: req.body.sessionKey,
         },
       })
@@ -822,6 +843,7 @@ app.post("/api/agents/:id/chat/send", wrap(async (req, res) => {
       if (msg.method === "chat" || msg.method === "agent" || msg.method === "session.message") {
         const text = msg.params?.text ?? msg.params?.content ?? msg.params?.delta ?? msg.params?.chunk ?? null;
         if (text) {
+          fullResponse += text;
           res.write(`data: ${JSON.stringify({ type: "text", content: text })}\n\n`);
         }
       }
