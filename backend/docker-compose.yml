@@ -144,11 +144,11 @@ services:
     networks:
       - nanoclaw-net
 
-  # ── Cloudflare Tunnel (exposes API to Vercel frontend) ────────
+  # ── Cloudflare Tunnel (exposes API at api.agentfrac.com) ──────
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    command: tunnel --no-autoupdate --url http://api:4000
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
       - api
     networks:
@@ -163,7 +163,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://46.225.66.96:4000
+      NEXT_PUBLIC_API_URL: https://api.agentfrac.com
     depends_on:
       - api
     networks:
