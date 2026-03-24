@@ -63,6 +63,7 @@
 | Update/delete integration | Built | `/integrations` | `PUT/DELETE /api/integrations/:id` | — |
 | Bind to agent | Built | `/agents/[id]` | `POST /api/agents/:id/integrations` | — |
 | Test integration | Partial | UI present | Needs work | — |
+| Integration persistence | Built | — | PostgreSQL storage | Migrated from in-memory Maps |
 
 ## Monitoring
 
@@ -93,6 +94,7 @@
 | Hetzner backend deployment | Built | docker-compose on VM |
 | Cloudflare Tunnel | Built | Optional, in docker-compose |
 | Setup script | Built | `setup.sh` for VM provisioning |
+| API rate limiting | Built | 100 req/min general, 20 req/min writes |
 | CI/CD | Planned | — |
 | Multi-VM deployment | Planned | — |
 
@@ -104,5 +106,6 @@
 | Protected routes | Built | Clerk middleware |
 | Organizations | Built | Prisma schema, Clerk integration |
 | Role-based access | Built | member/manager/admin/owner in schema |
+| JWT auth middleware | Built | Optional in dev, required when `AUTH_REQUIRED=true` |
 | Stripe subscriptions | Partial | Prisma schema exists, no UI |
 | Usage tracking | Partial | Prisma schema exists, no UI |

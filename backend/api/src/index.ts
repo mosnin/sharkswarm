@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import { query, pool } from "./db";
 import { publishToAgent } from "./redis";
 import { getAllAgents, getAgent, updateAgent, createAgent, deleteAgent, initAgentRegistry } from "./agents";
@@ -30,6 +31,26 @@ app.use(
   })
 );
 app.use(express.json());
+
+// --------------- Rate Limiting ---------------
+
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100,            // 100 requests per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later" },
+});
+
+const strictLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20,             // 20 requests per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many write requests, please try again later" },
+});
+
+app.use(generalLimiter);
 
 // Async route error wrapper — catches unhandled rejections and sends 500
 const wrap =
@@ -91,7 +112,7 @@ app.get("/api/agents/:id", wrap(async (req, res) => {
   res.json(agent);
 }));
 
-app.post("/api/agents", async (req, res) => {
+app.post("/api/agents", strictLimiter, async (req, res) => {
   const { name, systemPrompt, model, tools } = req.body;
   if (!name) return res.status(400).json({ error: "name is required" });
   try {
@@ -142,7 +163,7 @@ app.post("/api/agents/:id/reset", wrap(async (req, res) => {
 
 // --------------- Messages ---------------
 
-app.post("/api/send-message", async (req, res) => {
+app.post("/api/send-message", strictLimiter, async (req, res) => {
   const { to_agent, message } = req.body;
 
   if (!to_agent || !message) {
@@ -824,6 +845,7 @@ app.post("/api/agents/:id/chat/send", wrap(async (req, res) => {
 
 // --------------- GLORB Control Plane ---------------
 
+app.post("/api/glorb/missions", strictLimiter);
 app.use("/api/glorb", glorbRouter);
 
 // --------------- Start ---------------

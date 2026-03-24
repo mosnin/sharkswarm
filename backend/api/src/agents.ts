@@ -16,6 +16,16 @@ export const docker = new Dockerode({ socketPath: "/var/run/docker.sock" });
 const NETWORK = process.env.DOCKER_NETWORK || "backend_nanoclaw-net";
 const AGENT_IMAGE = process.env.AGENT_IMAGE || "sharkswarm-openclaw";
 
+async function discoverNetwork(): Promise<string> {
+  if (process.env.DOCKER_NETWORK) return process.env.DOCKER_NETWORK;
+  try {
+    const networks = await docker.listNetworks();
+    const match = networks.find(n => n.Name?.endsWith("nanoclaw-net"));
+    if (match) return match.Name!;
+  } catch {}
+  return "backend_nanoclaw-net"; // fallback
+}
+
 // ── Bootstrap DB table ────────────────────────────────────────────
 export async function initAgentRegistry() {
   await query(`
@@ -61,6 +71,7 @@ export async function createAgent(fields: {
 }): Promise<AgentConfig> {
   const id = `agent-${Date.now()}`;
   const containerName = `sharkswarm-agent-${id}`;
+  const network = await discoverNetwork();
 
   // Start Docker container (OpenClaw instance with OpenAI provider)
   let container: Dockerode.Container;
@@ -78,7 +89,7 @@ export async function createAgent(fields: {
       ],
       ExposedPorts: { "18789/tcp": {} },
       HostConfig: {
-        NetworkMode: NETWORK,
+        NetworkMode: network,
         RestartPolicy: { Name: "unless-stopped" as const },
         Binds: [
           `sharkswarm-${id}-config:/home/node/.openclaw`,

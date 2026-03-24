@@ -8,7 +8,30 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- JWT auth middleware for backend API (optional in dev, required when `AUTH_REQUIRED=true`)
+- API rate limiting: 100 req/min general, 20 req/min for write endpoints
+- Mission status transition validation via state machine
+- Mission input validation for `mission_type`, `risk_level`, and `quality_bar` fields
+- Mission deadline enforcement
+- Docker volumes and system prompt injection for dynamically spawned agents
+- Agent workspace directory creation on spawn
+- Auto-discover Docker network name for dynamic agents
+
+### Changed
+- Migrated integration storage from in-memory Maps to PostgreSQL persistence
+- Normalized SSE streaming format between backend and frontend
+- Improved frontend error handling: parse server errors, add `console.error`
+- Switched cloudflared to use token-based tunnel configuration
+
 ### Fixed
+- CORS credentials mismatch for cross-origin Vercel-to-Hetzner requests
+- `AGENT_IMAGE` default changed from `sharkswarm-agent` to `sharkswarm-openclaw`
+- Redis bridge creating duplicate tasks for every chat message
+- `glorb_memory` upsert with proper UNIQUE constraint
+- `compileMission` now wraps in try/catch and reverts mission to draft on failure
+- `executeMission` crash when `topology_id` is null
+- Redis publish calls wrapped in try/catch for resilience
 - Add `prisma generate` to `npm run build` script so Vercel builds succeed
 - Add `prisma generate` to frontend Dockerfile for Docker-based builds
 - Copy `package-lock.json` in Dockerfile and use `npm ci` for reproducible installs

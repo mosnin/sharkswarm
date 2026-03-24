@@ -318,10 +318,23 @@ export async function executeMission(missionId: string): Promise<Mission> {
   if (!mission) throw new Error(`Mission ${missionId} not found`);
   if (mission.status !== "ready") throw new Error(`Mission must be in ready status to execute`);
 
+  // Check deadline before starting execution
+  if (mission.deadline) {
+    const deadlineDate = new Date(mission.deadline);
+    if (deadlineDate < new Date()) {
+      throw new Error("Mission deadline has already passed");
+    }
+  }
+
+  // Ensure mission was compiled (has a topology)
+  if (!mission.topology_id) {
+    throw new Error("Mission has no topology. Did you forget to compile?");
+  }
+
   await updateMissionStatus(missionId, "active");
 
   // Get topology and agents
-  const topology = await getTopology(mission.topology_id!);
+  const topology = await getTopology(mission.topology_id);
   if (!topology) throw new Error("Topology not found");
 
   const agents = await getMissionAgents(missionId);
@@ -336,7 +349,16 @@ export async function executeMission(missionId: string): Promise<Mission> {
   // Send mission briefing to lead agent
   if (leadSpec?.runtime_agent_id) {
     const briefing = buildMissionBriefing(mission, topology, agents);
-    await publishToAgent("glorb", leadSpec.runtime_agent_id, briefing);
+    try {
+      await publishToAgent("glorb", leadSpec.runtime_agent_id, briefing);
+    } catch (pubErr) {
+      const pubErrMsg = pubErr instanceof Error ? pubErr.message : String(pubErr);
+      await recordProvenance(missionId, "decision", leadSpec.id, `Warning: Failed to publish briefing to lead agent via Redis: ${pubErrMsg}`, {
+        error: pubErrMsg,
+        runtime_agent_id: leadSpec.runtime_agent_id,
+        fallback: "Agents may still be reachable via gateway proxy",
+      });
+    }
 
     await recordProvenance(missionId, "handoff", leadSpec.id, "Mission briefing sent to lead agent", {
       runtime_agent_id: leadSpec.runtime_agent_id,
@@ -350,7 +372,16 @@ export async function executeMission(missionId: string): Promise<Mission> {
     for (const spec of agents) {
       if (spec.role_type !== "synthesizer" && spec.runtime_agent_id) {
         const taskMsg = `[GLORB Mission: ${mission.title}]\nRole: ${spec.role_type}\nObjective: ${mission.objective}\nPurpose: ${spec.purpose}\n\nBegin your research. When complete, summarize your findings.`;
-        await publishToAgent("glorb", spec.runtime_agent_id, taskMsg);
+        try {
+          await publishToAgent("glorb", spec.runtime_agent_id, taskMsg);
+        } catch (pubErr) {
+          const pubErrMsg = pubErr instanceof Error ? pubErr.message : String(pubErr);
+          await recordProvenance(missionId, "decision", spec.id, `Warning: Failed to publish task to agent ${spec.name} via Redis: ${pubErrMsg}`, {
+            error: pubErrMsg,
+            runtime_agent_id: spec.runtime_agent_id,
+            fallback: "Agent may still be reachable via gateway proxy",
+          });
+        }
       }
     }
   }
@@ -638,4 +669,27 @@ ${JSON.stringify(topology.handoff_rules, null, 2)}
 ${JSON.stringify(topology.quality_gates, null, 2)}
 
 Begin execution now.`;
+}
+
+// ── Mission Deadline Enforcement ────────────────────────────────
+
+export async function checkMissionDeadlines(): Promise<number> {
+  const expiredMissions = await query<Mission>(
+    `SELECT * FROM glorb_missions WHERE status = 'active' AND deadline IS NOT NULL AND deadline < NOW()`
+  );
+
+  let abortedCount = 0;
+  for (const mission of expiredMissions) {
+    try {
+      await abortMission(mission.id, "Deadline exceeded");
+      abortedCount++;
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      await recordProvenance(mission.id, "decision", undefined, `Failed to abort expired mission: ${errMsg}`, {
+        error: errMsg,
+      });
+    }
+  }
+
+  return abortedCount;
 }

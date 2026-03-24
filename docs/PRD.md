@@ -100,6 +100,24 @@ External tools and services that agents can use:
 - **Observability:** All agent actions logged to PostgreSQL; GLORB provenance for audit trail
 - **Data:** PostgreSQL with persistent Docker volumes; no data loss on container restart
 
+### Auth Middleware (Backend API)
+
+The backend Express API has its own JWT authentication middleware, separate from Clerk on the frontend. This ensures that direct API access is authenticated even outside the Vercel frontend context.
+
+- **Development mode:** Auth is optional by default, allowing unauthenticated local development
+- **Production mode:** Auth is required when the `AUTH_REQUIRED=true` environment variable is set
+- **Mechanism:** JWT tokens are validated on every request via an Express middleware layer
+- **Scope:** Applied to all API routes; unauthenticated requests receive a `401 Unauthorized` response when auth is required
+
+### Rate Limiting
+
+API rate limiting is enforced to protect backend resources and prevent abuse.
+
+- **General endpoints:** 100 requests per minute per client
+- **Write endpoints** (POST, PUT, DELETE): 20 requests per minute per client
+- **Response:** Clients exceeding the limit receive a `429 Too Many Requests` response with a `Retry-After` header
+- **Implementation:** Express middleware using in-memory sliding window counters
+
 ## Database Schema
 
 ### Backend (PostgreSQL - raw SQL)
