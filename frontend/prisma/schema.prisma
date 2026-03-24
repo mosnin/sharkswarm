@@ -1,0 +1,213 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Enums ──────────────────────────────────────────────────────
+
+enum Role {
+  member
+  manager
+  admin
+  owner
+}
+
+enum MembershipStatus {
+  active
+  invited
+  suspended
+}
+
+enum Plan {
+  free
+  starter
+  pro
+  enterprise
+}
+
+enum SubscriptionStatus {
+  active
+  trialing
+  past_due
+  canceled
+  paused
+}
+
+enum IntegrationStatus {
+  active
+  disconnected
+  error
+}
+
+// ── User ───────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(uuid()) @db.Uuid
+  clerkId       String   @unique
+  email         String   @unique
+  name          String
+  avatarUrl     String?
+  lastLoginAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  memberships   Membership[]
+  adminRecords  AdminRecord[]
+  usageEvents   UsageEvent[]
+  integrations  Integration[] @relation("ConnectedBy")
+}
+
+// ── Organization ───────────────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  logoUrl   String?
+  plan      Plan     @default(free)
+  createdBy String   @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships        Membership[]
+  subscription       Subscription?
+  settings           Settings?
+  integrations       Integration[]
+  usageEvents        UsageEvent[]
+  analyticsSummaries AnalyticsSummary[]
+
+  @@index([slug])
+}
+
+// ── Membership ─────────────────────────────────────────────────
+
+model Membership {
+  id             String           @id @default(uuid()) @db.Uuid
+  userId         String           @db.Uuid
+  organizationId String           @db.Uuid
+  role           Role             @default(member)
+  status         MembershipStatus @default(active)
+  invitedEmail   String?
+  invitedAt      DateTime?
+  joinedAt       DateTime?
+  createdAt      DateTime         @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@index([invitedEmail])
+}
+
+// ── Subscription ───────────────────────────────────────────────
+
+model Subscription {
+  id                   String             @id @default(uuid()) @db.Uuid
+  organizationId       String             @unique @db.Uuid
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  plan                 Plan               @default(free)
+  status               SubscriptionStatus @default(active)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+// ── Settings ───────────────────────────────────────────────────
+
+model Settings {
+  id                  String   @id @default(uuid()) @db.Uuid
+  organizationId      String   @unique @db.Uuid
+  preferences         Json     @default("{}")
+  onboardingCompleted Boolean  @default(false)
+  onboardingStep      String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+// ── Integration ────────────────────────────────────────────────
+
+model Integration {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  provider       String
+  status         IntegrationStatus @default(active)
+  accessToken    String
+  refreshToken   String?
+  config         Json              @default("{}")
+  connectedBy    String            @db.Uuid
+  connectedAt    DateTime          @default(now())
+  createdAt      DateTime          @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation("ConnectedBy", fields: [connectedBy], references: [id])
+
+  @@unique([organizationId, provider])
+  @@index([organizationId])
+}
+
+// ── Usage & Analytics ──────────────────────────────────────────
+
+model UsageEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String?  @db.Uuid
+  eventType      String
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, eventType, createdAt])
+}
+
+enum AnalyticsPeriod {
+  daily
+  weekly
+  monthly
+}
+
+model AnalyticsSummary {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  period         AnalyticsPeriod
+  periodStart    DateTime        @db.Date
+  metric         String
+  value          Decimal
+  createdAt      DateTime        @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, period, periodStart, metric])
+  @@index([organizationId, metric])
+}
+
+// ── Admin Audit ────────────────────────────────────────────────
+
+model AdminRecord {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String   @db.Uuid
+  targetType String
+  targetId   String   @db.Uuid
+  action     String
+  details    Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id])
+
+  @@index([targetType, targetId])
+  @@index([actorId])
+  @@index([createdAt])
+}
