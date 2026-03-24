@@ -23,6 +23,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./postgres/02-glorb-schema.sql:/docker-entrypoint-initdb.d/02-glorb-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nanoclaw}"]
       interval: 10s

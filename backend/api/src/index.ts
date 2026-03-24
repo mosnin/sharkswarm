@@ -3,6 +3,7 @@ import cors from "cors";
 import { query, pool } from "./db";
 import { publishToAgent } from "./redis";
 import { getAllAgents, getAgent, updateAgent, createAgent, deleteAgent, initAgentRegistry } from "./agents";
+import { glorbRouter, initGlorbSchema } from "./glorb";
 import {
   getAllIntegrations,
   getIntegration,
@@ -810,16 +811,21 @@ app.post("/api/agents/:id/chat/send", wrap(async (req, res) => {
   setTimeout(cleanup, 120000);
 }));
 
+// --------------- GLORB Control Plane ---------------
+
+app.use("/api/glorb", glorbRouter);
+
 // --------------- Start ---------------
 
-initAgentRegistry()
+Promise.all([initAgentRegistry(), initGlorbSchema()])
   .then(() => {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`SharkSwarm API gateway listening on :${PORT}`);
+      console.log(`GLORB control plane mounted at /api/glorb`);
     });
   })
   .catch((err) => {
-    console.error("Failed to init agent registry:", err);
+    console.error("Failed to initialize:", err);
     process.exit(1);
   });
 
