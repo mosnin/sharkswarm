@@ -17,9 +17,24 @@ interface SystemHealth {
   tasks: Record<string, number>;
 }
 
+interface HeartbeatInfo {
+  lastHeartbeat?: string;
+  status?: string;
+  error?: string;
+}
+
+const cardStyle = {
+  background: "var(--surface)",
+  borderRadius: 8,
+  border: "1px solid var(--border)",
+  padding: 16,
+} as const;
+
 export default function HealthPage() {
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [heartbeats, setHeartbeats] = useState<Record<string, HeartbeatInfo>>({});
+  const [waking, setWaking] = useState<string | null>(null);
 
   const fetchHealth = useCallback(async () => {
     try {
@@ -30,18 +45,46 @@ export default function HealthPage() {
     }
   }, []);
 
+  const fetchHeartbeats = useCallback(async (agents: AgentHealth[]) => {
+    const results: Record<string, HeartbeatInfo> = {};
+    await Promise.allSettled(
+      agents.filter(a => a.status === "online").map(async (agent) => {
+        try {
+          results[agent.id] = await api<HeartbeatInfo>(`/api/agents/${agent.id}/heartbeat`);
+        } catch {
+          results[agent.id] = { error: "unavailable" };
+        }
+      })
+    );
+    setHeartbeats(results);
+  }, []);
+
   useEffect(() => {
     fetchHealth();
     const interval = setInterval(fetchHealth, 10000);
     return () => clearInterval(interval);
   }, [fetchHealth]);
 
-  const cardStyle = {
-    background: "var(--surface)",
-    borderRadius: 8,
-    border: "1px solid var(--border)",
-    padding: 16,
-  } as const;
+  useEffect(() => {
+    if (health?.agents) {
+      fetchHeartbeats(health.agents);
+    }
+  }, [health, fetchHeartbeats]);
+
+  const triggerHeartbeat = async (agentId: string) => {
+    setWaking(agentId);
+    try {
+      await api(`/api/agents/${agentId}/heartbeat`, {
+        method: "POST",
+        body: JSON.stringify({ text: "Manual heartbeat from dashboard", mode: "now" }),
+      });
+      await fetchHealth();
+    } catch {
+      // ignore
+    } finally {
+      setWaking(null);
+    }
+  };
 
   if (!health) return <p>Loading system health...</p>;
 
@@ -68,33 +111,15 @@ export default function HealthPage() {
         <div style={cardStyle}>
           <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6 }}>PostgreSQL</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: "50%",
-                background: health.infrastructure.postgres ? "var(--green)" : "var(--red)",
-              }}
-            />
-            <span style={{ fontSize: 18, fontWeight: 600 }}>
-              {health.infrastructure.postgres ? "Online" : "Offline"}
-            </span>
+            <span style={{ width: 10, height: 10, borderRadius: "50%", background: health.infrastructure.postgres ? "var(--green)" : "var(--red)" }} />
+            <span style={{ fontSize: 18, fontWeight: 600 }}>{health.infrastructure.postgres ? "Online" : "Offline"}</span>
           </div>
         </div>
         <div style={cardStyle}>
           <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6 }}>Redis</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: "50%",
-                background: health.infrastructure.redis ? "var(--green)" : "var(--red)",
-              }}
-            />
-            <span style={{ fontSize: 18, fontWeight: 600 }}>
-              {health.infrastructure.redis ? "Online" : "Offline"}
-            </span>
+            <span style={{ width: 10, height: 10, borderRadius: "50%", background: health.infrastructure.redis ? "var(--green)" : "var(--red)" }} />
+            <span style={{ fontSize: 18, fontWeight: 600 }}>{health.infrastructure.redis ? "Online" : "Offline"}</span>
           </div>
         </div>
         <div style={cardStyle}>
@@ -108,56 +133,78 @@ export default function HealthPage() {
         </div>
       </div>
 
-      {/* Agents */}
+      {/* Agents with Heartbeat */}
       <h2 style={{ fontSize: 18, marginBottom: 12 }}>Agents</h2>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 }}>
-        {health.agents.map((agent) => (
-          <div key={agent.id} style={cardStyle}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              <span
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: "50%",
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 12 }}>
+        {health.agents.map((agent) => {
+          const hb = heartbeats[agent.id];
+          return (
+            <div key={agent.id} style={cardStyle}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <span style={{
+                  width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
                   background: agent.status === "online" ? "var(--green)" : "var(--red)",
-                  flexShrink: 0,
-                }}
-              />
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 600 }}>{agent.name}</div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{agent.id}</div>
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 13 }}>
-              <div>
-                <span style={{ color: "var(--text-muted)" }}>Status: </span>
-                <span style={{ color: agent.status === "online" ? "var(--green)" : "var(--red)" }}>
+                }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600 }}>{agent.name}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{agent.id}</div>
+                </div>
+                <span style={{
+                  fontSize: 11, padding: "2px 8px", borderRadius: 10,
+                  background: agent.status === "online" ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
+                  color: agent.status === "online" ? "var(--green)" : "var(--red)",
+                  fontWeight: 600,
+                }}>
                   {agent.status}
                 </span>
               </div>
-              <div>
-                <span style={{ color: "var(--text-muted)" }}>Latency: </span>
-                <span>
-                  {agent.latencyMs !== null ? `${agent.latencyMs}ms` : "—"}
-                </span>
-              </div>
-              <div style={{ gridColumn: "1 / -1" }}>
-                <span style={{ color: "var(--text-muted)" }}>Last activity: </span>
-                <span>
-                  {agent.lastActivity
-                    ? new Date(agent.lastActivity).toLocaleString()
-                    : "No activity"}
-                </span>
-              </div>
-            </div>
 
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              <a href={`/agents/${agent.id}/chat`} style={{ fontSize: 12 }}>Chat</a>
-              <a href={`/agents/${agent.id}`} style={{ fontSize: 12 }}>Config</a>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 13 }}>
+                <div>
+                  <span style={{ color: "var(--text-muted)" }}>Latency: </span>
+                  <span>{agent.latencyMs !== null ? `${agent.latencyMs}ms` : "—"}</span>
+                </div>
+                <div>
+                  <span style={{ color: "var(--text-muted)" }}>Last activity: </span>
+                  <span>{agent.lastActivity ? new Date(agent.lastActivity).toLocaleTimeString() : "—"}</span>
+                </div>
+              </div>
+
+              {/* Heartbeat Section */}
+              <div style={{
+                marginTop: 10, padding: "8px 12px", borderRadius: 6,
+                background: "var(--bg)", border: "1px solid var(--border)",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontSize: 12 }}>
+                    <span style={{ color: "var(--text-muted)" }}>Heartbeat: </span>
+                    {hb?.lastHeartbeat ? (
+                      <span style={{ color: "var(--green)" }}>
+                        {new Date(hb.lastHeartbeat).toLocaleTimeString()}
+                      </span>
+                    ) : hb?.error ? (
+                      <span style={{ color: "var(--text-muted)" }}>unavailable</span>
+                    ) : (
+                      <span style={{ color: "var(--text-muted)" }}>—</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => triggerHeartbeat(agent.id)}
+                    disabled={agent.status === "offline" || waking === agent.id}
+                    style={{ fontSize: 11, padding: "3px 10px" }}
+                  >
+                    {waking === agent.id ? "Waking..." : "Wake"}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <a href={`/agents/${agent.id}/chat`} style={{ fontSize: 12 }}>Chat</a>
+                <a href={`/agents/${agent.id}`} style={{ fontSize: 12 }}>Config</a>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

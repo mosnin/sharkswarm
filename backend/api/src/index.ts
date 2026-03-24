@@ -487,6 +487,317 @@ app.post("/api/schedules/:id/run", async (req, res) => {
   res.json({ success: true });
 });
 
+// --------------- OpenClaw Gateway Proxy ---------------
+// These endpoints proxy JSON-RPC calls to individual OpenClaw agent gateways
+
+import { callAgentGateway, callAllAgentsGateway } from "./gateway-proxy";
+
+// Generic proxy: call any gateway method on a specific agent
+app.post("/api/agents/:id/gateway/:method", async (req, res) => {
+  try {
+    const result = await callAgentGateway(
+      req.params.id,
+      req.params.method.replace(/-/g, "."),
+      req.body
+    );
+    res.json({ ok: true, result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Gateway call failed";
+    res.status(502).json({ ok: false, error: message });
+  }
+});
+
+// Get agent config (openclaw.json)
+app.get("/api/agents/:id/config", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "config.get");
+    res.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to get config";
+    res.status(502).json({ error: message });
+  }
+});
+
+// Update agent config
+app.put("/api/agents/:id/config", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "config.patch", {
+      patch: req.body,
+    });
+    res.json({ ok: true, result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to update config";
+    res.status(502).json({ error: message });
+  }
+});
+
+// List models available to an agent
+app.get("/api/agents/:id/models", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "models.list");
+    res.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to list models";
+    res.status(502).json({ error: message });
+  }
+});
+
+// Get channel status for an agent
+app.get("/api/agents/:id/channels", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "channels.status");
+    res.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to get channels";
+    res.status(502).json({ error: message });
+  }
+});
+
+// Get all channels across all agents
+app.get("/api/channels", async (_req, res) => {
+  try {
+    const results = await callAllAgentsGateway("channels.status");
+    res.json(results);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to get channels";
+    res.status(502).json({ error: message });
+  }
+});
+
+// Cron jobs on a specific agent
+app.get("/api/agents/:id/cron", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "cron.list");
+    res.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to list cron jobs";
+    res.status(502).json({ error: message });
+  }
+});
+
+app.post("/api/agents/:id/cron", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "cron.add", req.body);
+    res.json({ ok: true, result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to add cron job";
+    res.status(502).json({ error: message });
+  }
+});
+
+app.put("/api/agents/:id/cron/:jobId", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "cron.update", {
+      id: req.params.jobId,
+      ...req.body,
+    });
+    res.json({ ok: true, result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to update cron job";
+    res.status(502).json({ error: message });
+  }
+});
+
+app.delete("/api/agents/:id/cron/:jobId", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "cron.remove", {
+      id: req.params.jobId,
+    });
+    res.json({ ok: true, result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to remove cron job";
+    res.status(502).json({ error: message });
+  }
+});
+
+app.post("/api/agents/:id/cron/:jobId/run", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "cron.run", {
+      id: req.params.jobId,
+    });
+    res.json({ ok: true, result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to run cron job";
+    res.status(502).json({ error: message });
+  }
+});
+
+app.get("/api/agents/:id/cron/:jobId/runs", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "cron.runs", {
+      id: req.params.jobId,
+    });
+    res.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to get cron runs";
+    res.status(502).json({ error: message });
+  }
+});
+
+// Skills on a specific agent
+app.get("/api/agents/:id/skills", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "skills.status");
+    res.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to get skills";
+    res.status(502).json({ error: message });
+  }
+});
+
+// Heartbeat
+app.get("/api/agents/:id/heartbeat", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "last-heartbeat");
+    res.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to get heartbeat";
+    res.status(502).json({ error: message });
+  }
+});
+
+app.post("/api/agents/:id/heartbeat", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "wake", {
+      text: req.body.text || "heartbeat",
+      mode: req.body.mode || "now",
+    });
+    res.json({ ok: true, result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to trigger heartbeat";
+    res.status(502).json({ error: message });
+  }
+});
+
+// Sessions
+app.get("/api/agents/:id/sessions", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "sessions.list");
+    res.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to list sessions";
+    res.status(502).json({ error: message });
+  }
+});
+
+// Agent files (for .md files)
+app.get("/api/agents/:id/files", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "agents.files.list", {
+      agentId: req.query.agentId as string,
+    });
+    res.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to list files";
+    res.status(502).json({ error: message });
+  }
+});
+
+app.get("/api/agents/:id/files/:filename", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "agents.files.get", {
+      agentId: req.query.agentId as string,
+      filename: req.params.filename,
+    });
+    res.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to get file";
+    res.status(502).json({ error: message });
+  }
+});
+
+app.put("/api/agents/:id/files/:filename", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "agents.files.set", {
+      agentId: req.query.agentId as string,
+      filename: req.params.filename,
+      content: req.body.content,
+    });
+    res.json({ ok: true, result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to save file";
+    res.status(502).json({ error: message });
+  }
+});
+
+// Tools catalog
+app.get("/api/agents/:id/tools-catalog", async (req, res) => {
+  try {
+    const result = await callAgentGateway(req.params.id, "tools.catalog");
+    res.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to get tools";
+    res.status(502).json({ error: message });
+  }
+});
+
+// Chat send via gateway (for streaming support)
+app.post("/api/agents/:id/chat/send", async (req, res) => {
+  const agent = await getAgent(req.params.id);
+  if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+  const wsUrl = agent.internalUrl.replace(/^http/, "ws");
+
+  // Set up SSE streaming to the client
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "Access-Control-Allow-Origin": process.env.CORS_ORIGIN || "*",
+  });
+
+  const ws = new (await import("ws")).default(wsUrl);
+  const sendId = Date.now();
+  let closed = false;
+
+  const cleanup = () => {
+    if (!closed) {
+      closed = true;
+      ws.close();
+      res.end();
+    }
+  };
+
+  ws.on("open", () => {
+    ws.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: sendId,
+        method: "chat.send",
+        params: {
+          text: req.body.message || req.body.text,
+          sessionKey: req.body.sessionKey,
+        },
+      })
+    );
+  });
+
+  ws.on("message", (data: Buffer) => {
+    if (closed) return;
+    try {
+      const msg = JSON.parse(data.toString());
+      // Forward all events to the client as SSE
+      if (msg.method === "chat" || msg.method === "agent" || msg.method === "session.message") {
+        res.write(`data: ${JSON.stringify(msg)}\n\n`);
+      }
+      // Check for final response to our send
+      if (msg.id === sendId) {
+        res.write(`data: ${JSON.stringify({ type: "done", result: msg.result })}\n\n`);
+        cleanup();
+      }
+    } catch {
+      // ignore
+    }
+  });
+
+  ws.on("error", () => cleanup());
+  ws.on("close", () => cleanup());
+  req.on("close", () => cleanup());
+
+  // Safety timeout
+  setTimeout(cleanup, 120000);
+});
+
 // --------------- Start ---------------
 
 initAgentRegistry()

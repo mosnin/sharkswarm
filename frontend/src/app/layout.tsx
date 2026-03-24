@@ -17,10 +17,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <strong style={{ fontSize: 18, flexShrink: 0 }}>SharkSwarm</strong>
             <div className="nav-links">
               <a href="/">Agents</a>
+              <a href="/channels">Channels</a>
+              <a href="/models">Models</a>
+              <a href="/skills">Skills</a>
+              <a href="/schedules">Schedules</a>
               <a href="/tasks">Tasks</a>
               <a href="/messages">Messages</a>
               <a href="/integrations">Integrations</a>
-              <a href="/schedules">Schedules</a>
+              <a href="/settings">Settings</a>
               <a href="/health">Health</a>
               <a href="/logs">Logs</a>
             </div>
