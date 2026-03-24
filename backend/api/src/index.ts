@@ -15,6 +15,7 @@ import {
   unbindIntegrationFromAgent,
   initIntegrationsSchema,
 } from "./integrations";
+import { requireAuth } from "./auth";
 
 const app = express();
 const PORT = Number(process.env.API_PORT) || 4000;
@@ -47,6 +48,10 @@ const wrap =
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
+
+// --------------- Auth Middleware ---------------
+// All routes below this point require a valid JWT (when AUTH_REQUIRED=true).
+app.use(requireAuth);
 
 // --------------- Agents ---------------
 
@@ -794,11 +799,14 @@ app.post("/api/agents/:id/chat/send", wrap(async (req, res) => {
       const msg = JSON.parse(data.toString());
       // Forward all events to the client as SSE
       if (msg.method === "chat" || msg.method === "agent" || msg.method === "session.message") {
-        res.write(`data: ${JSON.stringify(msg)}\n\n`);
+        const text = msg.params?.text ?? msg.params?.content ?? msg.params?.delta ?? msg.params?.chunk ?? null;
+        if (text) {
+          res.write(`data: ${JSON.stringify({ type: "text", content: text })}\n\n`);
+        }
       }
       // Check for final response to our send
       if (msg.id === sendId) {
-        res.write(`data: ${JSON.stringify({ type: "done", result: msg.result })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
         cleanup();
       }
     } catch {

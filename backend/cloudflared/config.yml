@@ -1,0 +1,13 @@
+# Cloudflare Tunnel configuration
+# Replace TUNNEL_ID with your actual tunnel ID from `cloudflared tunnel create sharkswarm`
+# The tunnel token in .env handles authentication
+
+tunnel: sharkswarm
+# credentials-file: /etc/cloudflared/credentials.json  # not needed when using TUNNEL_TOKEN
+
+ingress:
+  # Route API traffic to the backend
+  - hostname: api.agentfrac.com
+    service: http://api:4000
+  # Catch-all rule (required by cloudflared)
+  - service: http_status:404

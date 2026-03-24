@@ -26,7 +26,16 @@ import {
   compressMemory,
 } from "./memory";
 import { routeMission, compileTopology, compileConstraints } from "./engine";
-import type { MissionType, MissionConstraints, MemoryLayer } from "./types";
+import type { MissionType, MissionConstraints, MemoryLayer, RiskLevel, QualityBar } from "./types";
+
+const VALID_MISSION_TYPES: MissionType[] = [
+  "exploration", "decision", "design", "build",
+  "audit", "negotiation", "synthesis", "execution",
+];
+
+const VALID_RISK_LEVELS: RiskLevel[] = ["low", "medium", "high", "critical"];
+
+const VALID_QUALITY_BARS: QualityBar[] = ["minimal", "standard", "high", "maximum"];
 
 export const glorbRouter = Router();
 
@@ -54,6 +63,21 @@ glorbRouter.post("/missions", wrap(async (req, res) => {
   const { title, objective, mission_type, deadline, budget_tokens, risk_level, quality_bar } = req.body;
   if (!title || !objective) {
     return res.status(400).json({ error: "title and objective are required" });
+  }
+  if (mission_type && !VALID_MISSION_TYPES.includes(mission_type)) {
+    return res.status(400).json({
+      error: `Invalid mission_type: "${mission_type}". Must be one of: ${VALID_MISSION_TYPES.join(", ")}`,
+    });
+  }
+  if (risk_level && !VALID_RISK_LEVELS.includes(risk_level)) {
+    return res.status(400).json({
+      error: `Invalid risk_level: "${risk_level}". Must be one of: ${VALID_RISK_LEVELS.join(", ")}`,
+    });
+  }
+  if (quality_bar && !VALID_QUALITY_BARS.includes(quality_bar)) {
+    return res.status(400).json({
+      error: `Invalid quality_bar: "${quality_bar}". Must be one of: ${VALID_QUALITY_BARS.join(", ")}`,
+    });
   }
   const mission = await createMission({
     title,

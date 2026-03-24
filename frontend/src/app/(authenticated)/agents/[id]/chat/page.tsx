@@ -101,15 +101,8 @@ export default function AgentChatPage() {
           if (line.startsWith("data: ")) {
             try {
               const data = JSON.parse(line.slice(6));
-              // Extract text content from various event formats
-              if (data.params?.text) {
-                accumulated += data.params.text;
-                setStreamingText(accumulated);
-              } else if (data.params?.content) {
-                accumulated += data.params.content;
-                setStreamingText(accumulated);
-              } else if (data.params?.delta) {
-                accumulated += data.params.delta;
+              if (data.type === "text") {
+                accumulated += data.content;
                 setStreamingText(accumulated);
               } else if (data.type === "done") {
                 // Stream complete

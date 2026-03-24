@@ -22,6 +22,17 @@ import type {
   RoutingDecision,
 } from "./types";
 
+// ── Status Transition Validation ────────────────────────────────
+
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  draft: ["compiling"],
+  compiling: ["ready", "draft"],  // draft = rollback on error
+  ready: ["active"],
+  active: ["paused", "completed", "failed", "aborted"],
+  paused: ["active", "aborted"],
+  // terminal states: completed, failed, aborted — no transitions out
+};
+
 // ── Mission CRUD ────────────────────────────────────────────────
 
 export async function createMission(input: {
@@ -75,6 +86,18 @@ export async function updateMissionStatus(
   status: MissionStatus,
   extra?: { result?: unknown; error?: string }
 ): Promise<Mission> {
+  // Validate status transition
+  const current = await getMission(id);
+  if (!current) throw new Error(`Mission ${id} not found`);
+
+  const currentStatus = current.status;
+  if (currentStatus !== status) {
+    const allowed = VALID_TRANSITIONS[currentStatus];
+    if (!allowed || !allowed.includes(status)) {
+      throw new Error(`Invalid status transition: ${currentStatus} -> ${status}`);
+    }
+  }
+
   const setClauses = ["status = $1", "updated_at = NOW()"];
   const params: unknown[] = [status];
 
