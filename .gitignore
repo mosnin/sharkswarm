@@ -8,6 +8,7 @@ frontend/out/
 
 # Environment files with secrets
 backend/.env
+backend/cloudflared/
 backend/agent1/.env
 backend/agent2/.env
 

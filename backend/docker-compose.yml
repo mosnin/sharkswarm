@@ -150,7 +150,7 @@ services:
     restart: unless-stopped
     command: tunnel --no-autoupdate --config /etc/cloudflared/config.yml run sharkswarm
     volumes:
-      - ${HOME}/.cloudflared:/etc/cloudflared:ro
+      - ./cloudflared:/etc/cloudflared:ro
     depends_on:
       - api
     networks:
