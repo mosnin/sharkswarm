@@ -109,6 +109,7 @@ CREATE INDEX IF NOT EXISTS idx_glorb_agent_specs_mission ON glorb_agent_specs(mi
 CREATE INDEX IF NOT EXISTS idx_glorb_topologies_mission ON glorb_topologies(mission_id);
 CREATE INDEX IF NOT EXISTS idx_glorb_memory_layer_scope ON glorb_memory(layer, scope_id);
 CREATE INDEX IF NOT EXISTS idx_glorb_memory_key ON glorb_memory(key);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_glorb_memory_layer_scope_key ON glorb_memory(layer, scope_id, key);
 CREATE INDEX IF NOT EXISTS idx_glorb_provenance_mission ON glorb_provenance(mission_id);
 CREATE INDEX IF NOT EXISTS idx_glorb_provenance_event ON glorb_provenance(event_type);
 CREATE INDEX IF NOT EXISTS idx_glorb_gate_results_mission ON glorb_gate_results(mission_id);

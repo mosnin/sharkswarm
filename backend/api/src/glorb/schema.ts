@@ -111,6 +111,7 @@ export async function initGlorbSchema() {
   await query("CREATE INDEX IF NOT EXISTS idx_glorb_topologies_mission ON glorb_topologies(mission_id)");
   await query("CREATE INDEX IF NOT EXISTS idx_glorb_memory_layer_scope ON glorb_memory(layer, scope_id)");
   await query("CREATE INDEX IF NOT EXISTS idx_glorb_memory_key ON glorb_memory(key)");
+  await query("CREATE UNIQUE INDEX IF NOT EXISTS idx_glorb_memory_layer_scope_key ON glorb_memory(layer, scope_id, key)");
   await query("CREATE INDEX IF NOT EXISTS idx_glorb_provenance_mission ON glorb_provenance(mission_id)");
   await query("CREATE INDEX IF NOT EXISTS idx_glorb_gate_results_mission ON glorb_gate_results(mission_id)");
 

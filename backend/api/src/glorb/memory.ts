@@ -83,7 +83,12 @@ export async function persistMemory(
   const rows = await query<MemoryEntry>(
     `INSERT INTO glorb_memory (layer, scope_id, key, content, metadata, created_by, expires_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT DO NOTHING
+     ON CONFLICT (layer, scope_id, key) DO UPDATE
+       SET content = EXCLUDED.content,
+           metadata = EXCLUDED.metadata,
+           created_by = EXCLUDED.created_by,
+           expires_at = EXCLUDED.expires_at,
+           updated_at = NOW()
      RETURNING *`,
     [
       layer,
@@ -95,25 +100,6 @@ export async function persistMemory(
       expiresAt,
     ]
   );
-
-  // If conflict (key already exists), update instead
-  if (rows.length === 0) {
-    const updated = await query<MemoryEntry>(
-      `UPDATE glorb_memory
-       SET content = $1, metadata = $2, updated_at = NOW(), expires_at = $3
-       WHERE layer = $4 AND scope_id = $5 AND key = $6
-       RETURNING *`,
-      [
-        JSON.stringify(content),
-        JSON.stringify(opts?.metadata || {}),
-        expiresAt,
-        layer,
-        scopeId,
-        key,
-      ]
-    );
-    return updated[0];
-  }
 
   return rows[0];
 }

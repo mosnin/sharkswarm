@@ -82,7 +82,8 @@ def subscribe(callback=None):
             channel = raw["channel"]
 
             _persist_message(from_agent, to_agent, channel, message)
-            _create_task(from_agent, to_agent, message)
+            if data.get("type") == "task" or data.get("create_task"):
+                _create_task(from_agent, to_agent, message)
 
             print(f"[relay] {from_agent} → {to_agent} on {channel}")
 

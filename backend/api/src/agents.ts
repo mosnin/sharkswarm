@@ -14,7 +14,7 @@ export interface AgentConfig {
 export const docker = new Dockerode({ socketPath: "/var/run/docker.sock" });
 
 const NETWORK = process.env.DOCKER_NETWORK || "backend_nanoclaw-net";
-const AGENT_IMAGE = process.env.AGENT_IMAGE || "sharkswarm-agent";
+const AGENT_IMAGE = process.env.AGENT_IMAGE || "sharkswarm-openclaw";
 
 // ── Bootstrap DB table ────────────────────────────────────────────
 export async function initAgentRegistry() {

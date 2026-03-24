@@ -20,8 +20,11 @@ const PORT = Number(process.env.API_PORT) || 4000;
 
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "*",
+    origin: process.env.CORS_ORIGIN
+      ? process.env.CORS_ORIGIN
+      : (requestOrigin, callback) => callback(null, requestOrigin || true),
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
   })
 );
 app.use(express.json());
@@ -756,7 +759,6 @@ app.post("/api/agents/:id/chat/send", wrap(async (req, res) => {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
-    "Access-Control-Allow-Origin": process.env.CORS_ORIGIN || "*",
   });
 
   const ws = new (await import("ws")).default(wsUrl);
