@@ -63,23 +63,40 @@ export async function createAgent(fields: {
   const containerName = `sharkswarm-agent-${id}`;
 
   // Start Docker container (OpenClaw instance with OpenAI provider)
-  const container = await docker.createContainer({
-    Image: AGENT_IMAGE,
-    name: containerName,
-    Env: [
-      `HOME=/home/node`,
-      `OPENAI_API_KEY=${process.env.OPENAI_API_KEY || ""}`,
-      `OPENCLAW_GATEWAY_BIND=lan`,
-      `REDIS_URL=${process.env.REDIS_URL || "redis://redis:6379"}`,
-      `DATABASE_URL=${process.env.DATABASE_URL || ""}`,
-    ],
-    ExposedPorts: { "18789/tcp": {} },
-    HostConfig: {
-      NetworkMode: NETWORK,
-      RestartPolicy: { Name: "unless-stopped" as const },
-    },
-  });
-  await container.start();
+  let container: Dockerode.Container;
+  try {
+    container = await docker.createContainer({
+      Image: AGENT_IMAGE,
+      name: containerName,
+      Env: [
+        `HOME=/home/node`,
+        `OPENAI_API_KEY=${process.env.OPENAI_API_KEY || ""}`,
+        `OPENCLAW_GATEWAY_BIND=lan`,
+        `REDIS_URL=${process.env.REDIS_URL || "redis://redis:6379"}`,
+        `DATABASE_URL=${process.env.DATABASE_URL || ""}`,
+        `OPENCLAW_SYSTEM_PROMPT=${fields.systemPrompt}`,
+      ],
+      ExposedPorts: { "18789/tcp": {} },
+      HostConfig: {
+        NetworkMode: NETWORK,
+        RestartPolicy: { Name: "unless-stopped" as const },
+        Binds: [
+          `sharkswarm-${id}-config:/home/node/.openclaw`,
+          `sharkswarm-${id}-workspace:/home/node/.openclaw/workspace`,
+        ],
+      },
+    });
+  } catch (err) {
+    throw new Error(`Failed to create container for agent ${id}: ${err}`);
+  }
+
+  try {
+    await container.start();
+  } catch (err) {
+    // Creation succeeded but start failed — clean up the container
+    await container.remove().catch(() => {});
+    throw new Error(`Failed to start container for agent ${id}: ${err}`);
+  }
 
   const rows = await query<AgentRow>(
     `INSERT INTO agent_registry (id, name, system_prompt, model, tools, container_id)
@@ -133,6 +150,16 @@ export async function deleteAgent(id: string): Promise<boolean> {
     await c.remove().catch(() => {});
   } catch {
     // ignore
+  }
+
+  // Clean up named volumes for this agent
+  try {
+    const configVol = docker.getVolume(`sharkswarm-${id}-config`);
+    await configVol.remove().catch(() => {});
+    const workVol = docker.getVolume(`sharkswarm-${id}-workspace`);
+    await workVol.remove().catch(() => {});
+  } catch {
+    // volumes may not exist
   }
 
   return true;

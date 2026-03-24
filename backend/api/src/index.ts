@@ -13,6 +13,7 @@ import {
   getAgentIntegrations,
   bindIntegrationToAgent,
   unbindIntegrationFromAgent,
+  initIntegrationsSchema,
 } from "./integrations";
 
 const app = express();
@@ -353,40 +354,40 @@ app.get("/api/health/system", wrap(async (_req, res) => {
 
 // --------------- Tool Integrations ---------------
 
-app.get("/api/integrations", (_req, res) => {
-  res.json(getAllIntegrations());
-});
+app.get("/api/integrations", wrap(async (_req, res) => {
+  res.json(await getAllIntegrations());
+}));
 
-app.get("/api/integrations/:id", (req, res) => {
-  const tool = getIntegration(req.params.id);
+app.get("/api/integrations/:id", wrap(async (req, res) => {
+  const tool = await getIntegration(req.params.id);
   if (!tool) return res.status(404).json({ error: "Integration not found" });
   res.json(tool);
-});
+}));
 
-app.post("/api/integrations", (req, res) => {
+app.post("/api/integrations", wrap(async (req, res) => {
   const { type } = req.body;
   if (!type || !["api", "mcp"].includes(type)) {
     return res.status(400).json({ error: "type must be 'api' or 'mcp'" });
   }
-  const created = createIntegration(req.body);
+  const created = await createIntegration(req.body);
   res.status(201).json(created);
-});
+}));
 
-app.put("/api/integrations/:id", (req, res) => {
-  const updated = updateIntegration(req.params.id, req.body);
+app.put("/api/integrations/:id", wrap(async (req, res) => {
+  const updated = await updateIntegration(req.params.id, req.body);
   if (!updated) return res.status(404).json({ error: "Integration not found" });
   res.json(updated);
-});
+}));
 
-app.delete("/api/integrations/:id", (req, res) => {
-  const ok = deleteIntegration(req.params.id);
+app.delete("/api/integrations/:id", wrap(async (req, res) => {
+  const ok = await deleteIntegration(req.params.id);
   if (!ok) return res.status(404).json({ error: "Integration not found" });
   res.json({ success: true });
-});
+}));
 
 // Test an API tool integration by making the actual HTTP call
-app.post("/api/integrations/:id/test", async (req, res) => {
-  const tool = getIntegration(req.params.id);
+app.post("/api/integrations/:id/test", wrap(async (req, res) => {
+  const tool = await getIntegration(req.params.id);
   if (!tool) return res.status(404).json({ error: "Integration not found" });
 
   if (tool.type === "api") {
@@ -427,26 +428,26 @@ app.post("/api/integrations/:id/test", async (req, res) => {
   } else {
     res.status(400).json({ error: "Unknown integration type" });
   }
-});
+}));
 
 // --------------- Agent ↔ Integration Bindings ---------------
 
-app.get("/api/agents/:id/integrations", (req, res) => {
-  res.json(getAgentIntegrations(req.params.id));
-});
+app.get("/api/agents/:id/integrations", wrap(async (req, res) => {
+  res.json(await getAgentIntegrations(req.params.id));
+}));
 
-app.post("/api/agents/:id/integrations", (req, res) => {
+app.post("/api/agents/:id/integrations", wrap(async (req, res) => {
   const { integrationId } = req.body;
   if (!integrationId) return res.status(400).json({ error: "integrationId required" });
-  const ok = bindIntegrationToAgent(req.params.id, integrationId);
+  const ok = await bindIntegrationToAgent(req.params.id, integrationId);
   if (!ok) return res.status(404).json({ error: "Integration not found" });
   res.json({ success: true });
-});
+}));
 
-app.delete("/api/agents/:id/integrations/:integrationId", (req, res) => {
-  unbindIntegrationFromAgent(req.params.id, req.params.integrationId);
+app.delete("/api/agents/:id/integrations/:integrationId", wrap(async (req, res) => {
+  await unbindIntegrationFromAgent(req.params.id, req.params.integrationId);
   res.json({ success: true });
-});
+}));
 
 // --------------- Schedules ---------------
 
@@ -819,7 +820,7 @@ app.use("/api/glorb", glorbRouter);
 
 // --------------- Start ---------------
 
-Promise.all([initAgentRegistry(), initGlorbSchema()])
+Promise.all([initAgentRegistry(), initGlorbSchema(), initIntegrationsSchema()])
   .then(() => {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`SharkSwarm API gateway listening on :${PORT}`);

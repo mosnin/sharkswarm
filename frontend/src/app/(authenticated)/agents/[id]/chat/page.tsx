@@ -40,15 +40,15 @@ export default function AgentChatPage() {
     try {
       const msgs = await api<Message[]>(`/api/agents/${agentId}/messages`);
       setMessages(msgs);
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Failed to fetch messages:", err);
     }
   }, [agentId]);
 
   useEffect(() => {
     api<AgentInfo>(`/api/agents/${agentId}`)
       .then(setAgent)
-      .catch(() => {});
+      .catch((err) => console.error("Failed to fetch agent info:", err));
     fetchMessages();
     const interval = setInterval(fetchMessages, 3000);
     return () => clearInterval(interval);
@@ -116,8 +116,8 @@ export default function AgentChatPage() {
                 setStreamingText("");
                 await fetchMessages();
               }
-            } catch {
-              // ignore parse errors
+            } catch (err) {
+              console.error("Failed to parse streaming data:", err);
             }
           }
         }
@@ -134,8 +134,8 @@ export default function AgentChatPage() {
             body: JSON.stringify({ to_agent: agentId, message: msg }),
           });
           await fetchMessages();
-        } catch {
-          // ignore
+        } catch (err) {
+          console.error("Failed to send fallback message:", err);
         }
       }
     } finally {

@@ -13,7 +13,14 @@ export async function api<T>(
     },
     credentials: "include",
   });
-  if (!res.ok) throw new Error(`API ${path}: ${res.status}`);
+  if (!res.ok) {
+    let message = `API ${path}: ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body.error) message = body.error;
+    } catch {}
+    throw new Error(message);
+  }
   return res.json();
 }
 
@@ -40,6 +47,13 @@ export async function authApi<T>(
     headers,
     credentials: "include",
   });
-  if (!res.ok) throw new Error(`API ${path}: ${res.status}`);
+  if (!res.ok) {
+    let message = `API ${path}: ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body.error) message = body.error;
+    } catch {}
+    throw new Error(message);
+  }
   return res.json();
 }

@@ -119,8 +119,8 @@ export default function MissionsPage() {
   const fetchMissions = useCallback(async () => {
     try {
       setMissions(await api<Mission[]>("/api/glorb/missions"));
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Failed to fetch missions:", err);
     } finally {
       setLoading(false);
     }

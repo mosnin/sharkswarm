@@ -118,149 +118,174 @@ export async function compileMission(missionId: string): Promise<{
 
   await updateMissionStatus(missionId, "compiling");
 
-  const constraints: MissionConstraints = {
-    deadline: mission.deadline || undefined,
-    budget_tokens: mission.budget_tokens || undefined,
-    risk_level: mission.risk_level as MissionConstraints["risk_level"],
-    quality_bar: mission.quality_bar as MissionConstraints["quality_bar"],
-  };
+  try {
+    const constraints: MissionConstraints = {
+      deadline: mission.deadline || undefined,
+      budget_tokens: mission.budget_tokens || undefined,
+      risk_level: mission.risk_level as MissionConstraints["risk_level"],
+      quality_bar: mission.quality_bar as MissionConstraints["quality_bar"],
+    };
 
-  // 1. Route the mission
-  const routing = routeMission(
-    mission.mission_type as MissionType,
-    mission.objective,
-    constraints
-  );
+    // 1. Route the mission
+    const routing = routeMission(
+      mission.mission_type as MissionType,
+      mission.objective,
+      constraints
+    );
 
-  await recordProvenance(missionId, "decision", undefined, "Mission routed", {
-    routing,
-  });
-
-  // 2. Compile topology
-  const plan = compileTopology(
-    mission.mission_type as MissionType,
-    routing,
-    mission.objective
-  );
-
-  // 3. Persist topology
-  const topologyId = `topo-${Date.now()}`;
-  const leadAgent = plan.agents.find(a => a.role_type === plan.lead_role);
-
-  const topoRows = await query<Topology>(
-    `INSERT INTO glorb_topologies (id, mission_id, name, topology_type, config, handoff_rules, merge_rules, quality_gates)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-    [
-      topologyId,
-      missionId,
-      `${mission.mission_type}_topology`,
-      plan.topology_type,
-      JSON.stringify({ lead_role: plan.lead_role }),
-      JSON.stringify(plan.handoff_rules),
-      JSON.stringify(plan.merge_rules),
-      JSON.stringify(plan.quality_gates),
-    ]
-  );
-
-  await recordProvenance(missionId, "topology_compiled", undefined, "Topology compiled", {
-    topology_type: plan.topology_type,
-    agent_count: plan.agents.length,
-  });
-
-  // 4. Create agent specs + spawn runtime agents
-  const agentSpecs: AgentSpec[] = [];
-
-  for (const agentPlan of plan.agents) {
-    // Build system prompt from GLORB spec
-    const systemPrompt = buildAgentSystemPrompt(agentPlan, mission, plan);
-
-    // Spawn real SharkSwarm agent
-    const runtimeAgent = await createAgent({
-      name: `[${mission.title}] ${agentPlan.name}`,
-      systemPrompt,
-      model: "openai/gpt-4.1-mini",
-      tools: agentPlan.tool_permissions,
+    await recordProvenance(missionId, "decision", undefined, "Mission routed", {
+      routing,
     });
 
-    // Persist GLORB agent spec
-    const specId = `spec-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const specRows = await query<AgentSpec>(
-      `INSERT INTO glorb_agent_specs
-       (id, mission_id, name, role_type, purpose, scope_in, scope_out,
-        capability_profile, tool_permissions, memory_scope, authority, autonomy,
-        runtime_agent_id, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-       RETURNING *`,
+    // 2. Compile topology
+    const plan = compileTopology(
+      mission.mission_type as MissionType,
+      routing,
+      mission.objective
+    );
+
+    // 3. Persist topology
+    const topologyId = `topo-${Date.now()}`;
+    const leadAgent = plan.agents.find(a => a.role_type === plan.lead_role);
+
+    const topoRows = await query<Topology>(
+      `INSERT INTO glorb_topologies (id, mission_id, name, topology_type, config, handoff_rules, merge_rules, quality_gates)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [
-        specId,
+        topologyId,
         missionId,
-        agentPlan.name,
-        agentPlan.role_type,
-        agentPlan.purpose,
-        null,
-        null,
-        JSON.stringify(agentPlan.capability_profile),
-        agentPlan.tool_permissions,
-        "mission",
-        agentPlan.authority,
-        agentPlan.autonomy,
-        runtimeAgent.id,
-        "instantiated",
+        `${mission.mission_type}_topology`,
+        plan.topology_type,
+        JSON.stringify({ lead_role: plan.lead_role }),
+        JSON.stringify(plan.handoff_rules),
+        JSON.stringify(plan.merge_rules),
+        JSON.stringify(plan.quality_gates),
       ]
     );
 
-    agentSpecs.push(specRows[0]);
-
-    await recordProvenance(missionId, "agent_spawned", specId, `Spawned ${agentPlan.role_type}: ${agentPlan.name}`, {
-      runtime_agent_id: runtimeAgent.id,
-      capability_profile: agentPlan.capability_profile,
+    await recordProvenance(missionId, "topology_compiled", undefined, "Topology compiled", {
+      topology_type: plan.topology_type,
+      agent_count: plan.agents.length,
     });
-  }
 
-  // Update topology with lead agent
-  if (leadAgent) {
-    const leadSpec = agentSpecs.find(s => s.role_type === plan.lead_role);
-    if (leadSpec) {
+    // 4. Create agent specs + spawn runtime agents
+    const agentSpecs: AgentSpec[] = [];
+    const spawnedRuntimeAgentIds: string[] = [];
+
+    try {
+      for (const agentPlan of plan.agents) {
+        // Build system prompt from GLORB spec
+        const systemPrompt = buildAgentSystemPrompt(agentPlan, mission, plan);
+
+        // Spawn real SharkSwarm agent
+        const runtimeAgent = await createAgent({
+          name: `[${mission.title}] ${agentPlan.name}`,
+          systemPrompt,
+          model: "openai/gpt-4.1-mini",
+          tools: agentPlan.tool_permissions,
+        });
+
+        spawnedRuntimeAgentIds.push(runtimeAgent.id);
+
+        // Persist GLORB agent spec
+        const specId = `spec-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const specRows = await query<AgentSpec>(
+          `INSERT INTO glorb_agent_specs
+           (id, mission_id, name, role_type, purpose, scope_in, scope_out,
+            capability_profile, tool_permissions, memory_scope, authority, autonomy,
+            runtime_agent_id, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+           RETURNING *`,
+          [
+            specId,
+            missionId,
+            agentPlan.name,
+            agentPlan.role_type,
+            agentPlan.purpose,
+            null,
+            null,
+            JSON.stringify(agentPlan.capability_profile),
+            agentPlan.tool_permissions,
+            "mission",
+            agentPlan.authority,
+            agentPlan.autonomy,
+            runtimeAgent.id,
+            "instantiated",
+          ]
+        );
+
+        agentSpecs.push(specRows[0]);
+
+        await recordProvenance(missionId, "agent_spawned", specId, `Spawned ${agentPlan.role_type}: ${agentPlan.name}`, {
+          runtime_agent_id: runtimeAgent.id,
+          capability_profile: agentPlan.capability_profile,
+        });
+      }
+    } catch (spawnErr) {
+      // Clean up already-spawned agents before propagating
+      for (const runtimeId of spawnedRuntimeAgentIds) {
+        try {
+          await deleteAgent(runtimeId);
+        } catch {
+          // best-effort cleanup
+        }
+      }
+      throw spawnErr;
+    }
+
+    // Update topology with lead agent
+    if (leadAgent) {
+      const leadSpec = agentSpecs.find(s => s.role_type === plan.lead_role);
+      if (leadSpec) {
+        await query(
+          "UPDATE glorb_topologies SET lead_agent_id = $1 WHERE id = $2",
+          [leadSpec.id, topologyId]
+        );
+      }
+    }
+
+    // Update mission with topology reference
+    await query(
+      "UPDATE glorb_missions SET topology_id = $1, policy = $2, updated_at = NOW() WHERE id = $3",
+      [topologyId, routing.policy, missionId]
+    );
+
+    // Insert quality gates
+    for (const gate of plan.quality_gates) {
       await query(
-        "UPDATE glorb_topologies SET lead_agent_id = $1 WHERE id = $2",
-        [leadSpec.id, topologyId]
+        `INSERT INTO glorb_gate_results (mission_id, gate_type, criteria)
+         VALUES ($1, $2, $3)`,
+        [missionId, gate.type, JSON.stringify(gate.criteria)]
       );
     }
+
+    await updateMissionStatus(missionId, "ready");
+
+    // Store mission context in memory
+    await persistMemory("mission", missionId, "mission_context", {
+      objective: mission.objective,
+      type: mission.mission_type,
+      topology: plan.topology_type,
+      agents: agentSpecs.map(s => ({ id: s.id, name: s.name, role: s.role_type })),
+      routing_decision: routing,
+    }, { createdBy: "glorb_orchestrator" });
+
+    const updatedMission = await getMission(missionId);
+    return {
+      mission: updatedMission!,
+      routing,
+      topology: topoRows[0],
+      agents: agentSpecs,
+    };
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    await recordProvenance(missionId, "decision", undefined, `Compilation failed: ${errorMessage}`, {
+      error: errorMessage,
+      phase: "compile",
+    });
+    await updateMissionStatus(missionId, "draft", { error: errorMessage });
+    throw err;
   }
-
-  // Update mission with topology reference
-  await query(
-    "UPDATE glorb_missions SET topology_id = $1, policy = $2, updated_at = NOW() WHERE id = $3",
-    [topologyId, routing.policy, missionId]
-  );
-
-  // Insert quality gates
-  for (const gate of plan.quality_gates) {
-    await query(
-      `INSERT INTO glorb_gate_results (mission_id, gate_type, criteria)
-       VALUES ($1, $2, $3)`,
-      [missionId, gate.type, JSON.stringify(gate.criteria)]
-    );
-  }
-
-  await updateMissionStatus(missionId, "ready");
-
-  // Store mission context in memory
-  await persistMemory("mission", missionId, "mission_context", {
-    objective: mission.objective,
-    type: mission.mission_type,
-    topology: plan.topology_type,
-    agents: agentSpecs.map(s => ({ id: s.id, name: s.name, role: s.role_type })),
-    routing_decision: routing,
-  }, { createdBy: "glorb_orchestrator" });
-
-  const updatedMission = await getMission(missionId);
-  return {
-    mission: updatedMission!,
-    routing,
-    topology: topoRows[0],
-    agents: agentSpecs,
-  };
 }
 
 // ── Execute Mission ─────────────────────────────────────────────

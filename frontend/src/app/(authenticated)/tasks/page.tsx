@@ -41,16 +41,16 @@ export default function TasksPage() {
       if (filterAgent) params.set("agent", filterAgent);
       const qs = params.toString();
       setTasks(await api<Task[]>(`/api/tasks${qs ? `?${qs}` : ""}`));
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Failed to fetch tasks:", err);
     }
   }, [filterStatus, filterAgent]);
 
   const fetchAgents = useCallback(async () => {
     try {
       setAgents(await api<AgentInfo[]>("/api/agents"));
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Failed to fetch agents:", err);
     }
   }, []);
 

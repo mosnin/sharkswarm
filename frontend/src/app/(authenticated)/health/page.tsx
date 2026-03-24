@@ -40,8 +40,8 @@ export default function HealthPage() {
     try {
       setHealth(await api<SystemHealth>("/api/health/system"));
       setLastRefresh(new Date());
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Failed to fetch system health:", err);
     }
   }, []);
 
@@ -79,8 +79,8 @@ export default function HealthPage() {
         body: JSON.stringify({ text: "Manual heartbeat from dashboard", mode: "now" }),
       });
       await fetchHealth();
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Failed to trigger heartbeat:", err);
     } finally {
       setWaking(null);
     }
