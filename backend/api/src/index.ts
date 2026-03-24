@@ -32,6 +32,9 @@ app.use(
 );
 app.use(express.json());
 
+// Trust proxy (Cloudflare Tunnel forwards X-Forwarded-For)
+app.set("trust proxy", 1);
+
 // --------------- Rate Limiting ---------------
 
 const generalLimiter = rateLimit({
