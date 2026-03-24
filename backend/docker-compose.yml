@@ -144,6 +144,16 @@ services:
     networks:
       - nanoclaw-net
 
+  # ── Cloudflare Tunnel (exposes API to Vercel frontend) ────────
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://api:4000
+    depends_on:
+      - api
+    networks:
+      - nanoclaw-net
+
   # ── Frontend (optional — for local dev or self-hosted) ─────────
   frontend:
     build:
