@@ -37,6 +37,7 @@ services:
     build:
       context: ./nanoclaw
       dockerfile: Dockerfile
+      network: host
     image: sharkswarm-openclaw
     restart: unless-stopped
     command: ["node", "openclaw.mjs", "gateway", "--allow-unconfigured", "--bind", "lan"]
@@ -68,6 +69,7 @@ services:
     build:
       context: ./nanoclaw
       dockerfile: Dockerfile
+      network: host
     image: sharkswarm-openclaw
     restart: unless-stopped
     command: ["node", "openclaw.mjs", "gateway", "--allow-unconfigured", "--bind", "lan"]

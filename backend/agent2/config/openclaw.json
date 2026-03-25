@@ -58,8 +58,7 @@
   },
   "agents": {
     "defaults": {
-      "model": { "primary": "openai/gpt-4.1-mini" },
-      "name": "Agent Beta"
+      "model": { "primary": "openai/gpt-4.1-mini" }
     }
   }
 }
