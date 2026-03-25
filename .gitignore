@@ -21,6 +21,11 @@ backend/glorbs/
 # Agent runtime data
 backend/agent*/workspace/
 backend/agent*/memory/
+backend/agent*/config/agents/
+backend/agent*/config/canvas/
+backend/agent*/config/logs/
+backend/agent*/config/*.bak
+backend/agent*/config/update-check.json
 
 # Docker volumes
 pgdata/
