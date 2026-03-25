@@ -24,7 +24,7 @@ const PORT = Number(process.env.API_PORT) || 4000;
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN
-      ? process.env.CORS_ORIGIN
+      ? process.env.CORS_ORIGIN.split(",").map((s) => s.trim())
       : (requestOrigin, callback) => callback(null, requestOrigin || true),
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
