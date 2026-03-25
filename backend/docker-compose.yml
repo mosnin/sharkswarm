@@ -99,7 +99,10 @@ services:
 
   # ── Redis ↔ Postgres Bridge ────────────────────────────────────
   redis-bridge:
-    build: ./redis-pubsub
+    build:
+      context: ./redis-pubsub
+      network: host
+    image: backend-redis-bridge
     restart: unless-stopped
     environment:
       REDIS_URL: redis://redis:6379
@@ -114,7 +117,10 @@ services:
 
   # ── Cron Scheduler ────────────────────────────────────────────────
   scheduler:
-    build: ./scheduler
+    build:
+      context: ./scheduler
+      network: host
+    image: backend-scheduler
     restart: unless-stopped
     environment:
       REDIS_URL: redis://redis:6379
@@ -129,7 +135,10 @@ services:
 
   # ── API Gateway (public-facing, called by Vercel frontend) ─────
   api:
-    build: ./api
+    build:
+      context: ./api
+      network: host
+    image: backend-api
     restart: unless-stopped
     ports:
       - "4000:4000"

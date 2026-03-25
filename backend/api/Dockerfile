@@ -3,12 +3,12 @@ FROM node:20-slim
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm config set strict-ssl false && npm install
 
 COPY tsconfig.json ./
 COPY src ./src
 
-RUN npx tsc
+RUN npm config set strict-ssl false && npx tsc
 
 EXPOSE 4000
 
