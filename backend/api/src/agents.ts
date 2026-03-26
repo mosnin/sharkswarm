@@ -1,5 +1,11 @@
-import { query } from "./db";
-import Dockerode from "dockerode";
+import { prisma } from "./prisma";
+import {
+  createAgentPod,
+  deleteAgentPod,
+  agentInternalUrl,
+} from "./k8s/agent-manager";
+
+// ── Types ────────────────────────────────────────────────────────
 
 export interface AgentConfig {
   id: string;
@@ -11,198 +17,147 @@ export interface AgentConfig {
   tools: string[];
 }
 
-export const docker = new Dockerode({ socketPath: "/var/run/docker.sock" });
+// ── Bootstrap ────────────────────────────────────────────────────
 
-const NETWORK = process.env.DOCKER_NETWORK || "backend_nanoclaw-net";
-const AGENT_IMAGE = process.env.AGENT_IMAGE || "sharkswarm-openclaw";
-
-async function discoverNetwork(): Promise<string> {
-  if (process.env.DOCKER_NETWORK) return process.env.DOCKER_NETWORK;
-  try {
-    const networks = await docker.listNetworks();
-    const match = networks.find(n => n.Name?.endsWith("nanoclaw-net"));
-    if (match) return match.Name!;
-  } catch {}
-  return "backend_nanoclaw-net"; // fallback
+/**
+ * Initialises the agent registry.
+ *
+ * With Prisma the schema is managed by migrations, so there is no DDL to run.
+ * This function is kept as a no-op so that `index.ts` startup does not need to
+ * change.
+ */
+export async function initAgentRegistry(): Promise<void> {
+  // Schema is managed by Prisma migrations — nothing to do at runtime.
 }
 
-// ── Bootstrap DB table ────────────────────────────────────────────
-export async function initAgentRegistry() {
-  await query(`
-    CREATE TABLE IF NOT EXISTS agent_registry (
-      id           VARCHAR(64)  PRIMARY KEY,
-      name         VARCHAR(128) NOT NULL,
-      system_prompt TEXT        NOT NULL DEFAULT '',
-      model        VARCHAR(64)  NOT NULL DEFAULT 'openai/gpt-4.1-mini',
-      tools        TEXT[]       NOT NULL DEFAULT '{}',
-      container_id VARCHAR(128),
-      created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-    )
-  `);
+// ── Helpers ──────────────────────────────────────────────────────
 
-  // Seed defaults if empty
-  const existing = await query<{ id: string }>("SELECT id FROM agent_registry");
-  if (existing.length === 0) {
-    await query(`
-      INSERT INTO agent_registry (id, name, system_prompt, model, tools) VALUES
-      ('agent-1', 'Agent Alpha', 'You are Agent Alpha, a general-purpose assistant in the SharkSwarm multi-agent system.', 'openai/gpt-4.1-mini', ARRAY['web_search','code_execution']),
-      ('agent-2', 'Agent Beta',  'You are Agent Beta, a specialist assistant in the SharkSwarm multi-agent system.',        'openai/gpt-4.1-mini', ARRAY['web_search','file_read'])
-      ON CONFLICT DO NOTHING
-    `);
-  }
-}
-
-// ── CRUD ──────────────────────────────────────────────────────────
-export async function getAllAgents(): Promise<AgentConfig[]> {
-  const rows = await query<AgentRow>("SELECT * FROM agent_registry ORDER BY created_at");
-  return rows.map(rowToConfig);
-}
-
-export async function getAgent(id: string): Promise<AgentConfig | undefined> {
-  const rows = await query<AgentRow>("SELECT * FROM agent_registry WHERE id = $1", [id]);
-  return rows.length ? rowToConfig(rows[0]) : undefined;
-}
-
-export async function createAgent(fields: {
+function toAgentConfig(row: {
+  id: string;
   name: string;
   systemPrompt: string;
   model: string;
   tools: string[];
-}): Promise<AgentConfig> {
-  const id = `agent-${Date.now()}`;
-  const containerName = `sharkswarm-agent-${id}`;
-  const network = await discoverNetwork();
+}): AgentConfig {
+  return {
+    id: row.id,
+    name: row.name,
+    internalUrl: agentInternalUrl(row.id),
+    publicUrl: "",
+    systemPrompt: row.systemPrompt ?? "",
+    model: row.model,
+    tools: row.tools ?? [],
+  };
+}
 
-  // Start Docker container (OpenClaw instance with OpenAI provider)
-  let container: Dockerode.Container;
+// ── CRUD ─────────────────────────────────────────────────────────
+
+export async function getAllAgents(organizationId: string): Promise<AgentConfig[]> {
+  const rows = await prisma.agent.findMany({
+    where: { organizationId },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map(toAgentConfig);
+}
+
+export async function getAgent(
+  id: string,
+  organizationId: string,
+): Promise<AgentConfig | undefined> {
+  const row = await prisma.agent.findFirst({
+    where: { id, organizationId },
+  });
+  return row ? toAgentConfig(row) : undefined;
+}
+
+export async function createAgent(
+  organizationId: string,
+  fields: {
+    name: string;
+    systemPrompt: string;
+    model: string;
+    tools: string[];
+  },
+): Promise<AgentConfig> {
+  // Create the DB record first (Prisma generates the UUID)
+  const row = await prisma.agent.create({
+    data: {
+      organizationId,
+      name: fields.name,
+      systemPrompt: fields.systemPrompt,
+      model: fields.model,
+      tools: fields.tools,
+      status: "starting",
+    },
+  });
+
+  // Spin up a K8s Deployment + Service for the agent
   try {
-    container = await docker.createContainer({
-      Image: AGENT_IMAGE,
-      name: containerName,
-      Env: [
-        `HOME=/home/node`,
-        `OPENAI_API_KEY=${process.env.OPENAI_API_KEY || ""}`,
-        `OPENCLAW_GATEWAY_BIND=lan`,
-        `REDIS_URL=${process.env.REDIS_URL || "redis://redis:6379"}`,
-        `DATABASE_URL=${process.env.DATABASE_URL || ""}`,
-        `OPENCLAW_SYSTEM_PROMPT=${fields.systemPrompt}`,
-      ],
-      ExposedPorts: { "18789/tcp": {} },
-      HostConfig: {
-        NetworkMode: network,
-        RestartPolicy: { Name: "unless-stopped" as const },
-        Binds: [
-          `sharkswarm-${id}-config:/home/node/.openclaw`,
-          `sharkswarm-${id}-workspace:/home/node/.openclaw/workspace`,
-        ],
-      },
+    await createAgentPod(organizationId, row.id, {
+      name: fields.name,
+      model: fields.model,
+      systemPrompt: fields.systemPrompt,
+      tools: fields.tools,
+      resourceLimits: { cpuMillis: 500, memoryMi: 512 },
+    });
+
+    await prisma.agent.update({
+      where: { id: row.id },
+      data: { status: "running" },
     });
   } catch (err) {
-    throw new Error(`Failed to create container for agent ${id}: ${err}`);
+    // Pod creation failed — mark the agent as failed so the UI can show it
+    await prisma.agent.update({
+      where: { id: row.id },
+      data: { status: "failed" },
+    });
+    throw new Error(`Failed to create K8s pod for agent ${row.id}: ${err}`);
   }
 
-  try {
-    await container.start();
-  } catch (err) {
-    // Creation succeeded but start failed — clean up the container
-    await container.remove().catch(() => {});
-    throw new Error(`Failed to start container for agent ${id}: ${err}`);
-  }
-
-  const rows = await query<AgentRow>(
-    `INSERT INTO agent_registry (id, name, system_prompt, model, tools, container_id)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [id, fields.name, fields.systemPrompt, fields.model, fields.tools, container.id]
-  );
-  return rowToConfig(rows[0]);
+  return toAgentConfig(row);
 }
 
-export async function updateAgent(id: string, updates: Partial<AgentConfig>): Promise<AgentConfig | undefined> {
-  const rows = await query<AgentRow>(
-    `UPDATE agent_registry
-     SET name = COALESCE($1, name),
-         system_prompt = COALESCE($2, system_prompt),
-         model = COALESCE($3, model),
-         tools = COALESCE($4, tools)
-     WHERE id = $5 RETURNING *`,
-    [
-      updates.name ?? null,
-      updates.systemPrompt ?? null,
-      updates.model ?? null,
-      updates.tools ?? null,
-      id,
-    ]
-  );
-  return rows.length ? rowToConfig(rows[0]) : undefined;
+export async function updateAgent(
+  id: string,
+  organizationId: string,
+  updates: Partial<AgentConfig>,
+): Promise<AgentConfig | undefined> {
+  // Ensure the agent belongs to this org before updating
+  const existing = await prisma.agent.findFirst({
+    where: { id, organizationId },
+  });
+  if (!existing) return undefined;
+
+  const row = await prisma.agent.update({
+    where: { id },
+    data: {
+      ...(updates.name !== undefined && { name: updates.name }),
+      ...(updates.systemPrompt !== undefined && { systemPrompt: updates.systemPrompt }),
+      ...(updates.model !== undefined && { model: updates.model }),
+      ...(updates.tools !== undefined && { tools: updates.tools }),
+    },
+  });
+
+  return toAgentConfig(row);
 }
 
-export async function deleteAgent(id: string): Promise<boolean> {
-  const rows = await query<{ container_id: string }>(
-    "DELETE FROM agent_registry WHERE id = $1 RETURNING container_id",
-    [id]
-  );
-  if (!rows.length) return false;
+export async function deleteAgent(
+  id: string,
+  organizationId: string,
+): Promise<boolean> {
+  // Ensure the agent belongs to this org
+  const existing = await prisma.agent.findFirst({
+    where: { id, organizationId },
+  });
+  if (!existing) return false;
 
-  const containerId = rows[0].container_id;
-  if (containerId) {
-    try {
-      const c = docker.getContainer(containerId);
-      await c.stop().catch(() => {});
-      await c.remove().catch(() => {});
-    } catch {
-      // container may already be gone
-    }
-  }
-
-  // Also try by name
+  // Tear down K8s resources first (best-effort)
   try {
-    const c = docker.getContainer(`sharkswarm-agent-${id}`);
-    await c.stop().catch(() => {});
-    await c.remove().catch(() => {});
+    await deleteAgentPod(organizationId, id);
   } catch {
-    // ignore
+    // Pod may already be gone — continue with DB cleanup
   }
 
-  // Clean up named volumes for this agent
-  try {
-    const configVol = docker.getVolume(`sharkswarm-${id}-config`);
-    await configVol.remove().catch(() => {});
-    const workVol = docker.getVolume(`sharkswarm-${id}-workspace`);
-    await workVol.remove().catch(() => {});
-  } catch {
-    // volumes may not exist
-  }
-
+  await prisma.agent.delete({ where: { id } });
   return true;
-}
-
-// ── Helpers ───────────────────────────────────────────────────────
-interface AgentRow {
-  id: string;
-  name: string;
-  system_prompt: string;
-  model: string;
-  tools: string[];
-  container_id?: string;
-}
-
-function rowToConfig(row: AgentRow): AgentConfig {
-  const id = row.id as string;
-  // Built-in agents use compose service names; dynamic agents use container names
-  const isBuiltIn = id === "agent-1" || id === "agent-2";
-  const serviceMap: Record<string, string> = {
-    "agent-1": "openclaw-agent-1",
-    "agent-2": "openclaw-agent-2",
-  };
-  const hostname = isBuiltIn ? serviceMap[id] : `sharkswarm-agent-${id}`;
-
-  return {
-    id,
-    name: row.name,
-    internalUrl: `http://${hostname}:18789`,
-    publicUrl: "",
-    systemPrompt: row.system_prompt || "",
-    model: row.model,
-    tools: row.tools || [],
-  };
 }

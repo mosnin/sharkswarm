@@ -17,12 +17,16 @@ export async function callAgentGateway(
   agentId: string,
   method: string,
   params?: Record<string, unknown>,
-  timeoutMs = 8000
+  timeoutMs = 8000,
+  organizationId?: string
 ): Promise<unknown> {
-  const agent = await getAgent(agentId);
+  // When organizationId is not provided, fall back to a dev default so
+  // existing call-sites that don't yet have org context keep working.
+  const orgId = organizationId ?? "00000000-0000-0000-0000-000000000000";
+  const agent = await getAgent(agentId, orgId);
   if (!agent) throw new Error(`Agent ${agentId} not found`);
 
-  // Agent's internalUrl is like http://openclaw-agent-1:18789
+  // Agent's internalUrl is like http://agent-<id>.sharkswarm-agents.svc.cluster.local:18789
   const wsUrl = agent.internalUrl.replace(/^http/, "ws");
 
   return new Promise((resolve, reject) => {
@@ -67,15 +71,17 @@ export async function callAgentGateway(
  */
 export async function callAllAgentsGateway(
   method: string,
-  params?: Record<string, unknown>
+  params?: Record<string, unknown>,
+  organizationId?: string
 ): Promise<Record<string, unknown>> {
-  const agents = await getAllAgents();
+  const orgId = organizationId ?? "00000000-0000-0000-0000-000000000000";
+  const agents = await getAllAgents(orgId);
   const results: Record<string, unknown> = {};
 
   await Promise.allSettled(
     agents.map(async (agent) => {
       try {
-        results[agent.id] = await callAgentGateway(agent.id, method, params);
+        results[agent.id] = await callAgentGateway(agent.id, method, params, 8000, orgId);
       } catch (err) {
         results[agent.id] = { error: err instanceof Error ? err.message : "Failed" };
       }

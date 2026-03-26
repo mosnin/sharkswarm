@@ -17,6 +17,7 @@ import {
   initIntegrationsSchema,
 } from "./integrations";
 import { requireAuth } from "./auth";
+import { getOrgId } from "./middleware/org-scope";
 
 const app = express();
 const PORT = Number(process.env.API_PORT) || 4000;
@@ -79,8 +80,9 @@ app.use(requireAuth);
 
 // --------------- Agents ---------------
 
-app.get("/api/agents", wrap(async (_req, res) => {
-  const agents = await getAllAgents();
+app.get("/api/agents", wrap(async (req, res) => {
+  const organizationId = getOrgId(req);
+  const agents = await getAllAgents(organizationId);
 
   const results = await Promise.all(
     agents.map(async (agent) => {
@@ -110,7 +112,8 @@ app.get("/api/agents", wrap(async (_req, res) => {
 }));
 
 app.get("/api/agents/:id", wrap(async (req, res) => {
-  const agent = await getAgent(req.params.id);
+  const organizationId = getOrgId(req);
+  const agent = await getAgent(req.params.id, organizationId);
   if (!agent) return res.status(404).json({ error: "Agent not found" });
   res.json(agent);
 }));
@@ -119,7 +122,8 @@ app.post("/api/agents", strictLimiter, async (req, res) => {
   const { name, systemPrompt, model, tools } = req.body;
   if (!name) return res.status(400).json({ error: "name is required" });
   try {
-    const agent = await createAgent({
+    const organizationId = getOrgId(req);
+    const agent = await createAgent(organizationId, {
       name,
       systemPrompt: systemPrompt || `You are ${name}, an AI agent in the SharkSwarm multi-agent system.`,
       model: model || "openai/gpt-4.1-mini",
@@ -134,19 +138,22 @@ app.post("/api/agents", strictLimiter, async (req, res) => {
 });
 
 app.put("/api/agents/:id", wrap(async (req, res) => {
-  const updated = await updateAgent(req.params.id, req.body);
+  const organizationId = getOrgId(req);
+  const updated = await updateAgent(req.params.id, organizationId, req.body);
   if (!updated) return res.status(404).json({ error: "Agent not found" });
   res.json(updated);
 }));
 
 app.delete("/api/agents/:id", wrap(async (req, res) => {
-  const ok = await deleteAgent(req.params.id);
+  const organizationId = getOrgId(req);
+  const ok = await deleteAgent(req.params.id, organizationId);
   if (!ok) return res.status(404).json({ error: "Agent not found" });
   res.json({ success: true });
 }));
 
 app.post("/api/agents/:id/reset", wrap(async (req, res) => {
-  const agent = await getAgent(req.params.id);
+  const organizationId = getOrgId(req);
+  const agent = await getAgent(req.params.id, organizationId);
   if (!agent) return res.status(404).json({ error: "Agent not found" });
   try {
     const ctrl = new AbortController();
@@ -314,8 +321,9 @@ app.get("/api/logs/filtered", wrap(async (req, res) => {
 
 // --------------- System Health ---------------
 
-app.get("/api/health/system", wrap(async (_req, res) => {
-  const agents = await getAllAgents();
+app.get("/api/health/system", wrap(async (req, res) => {
+  const organizationId = getOrgId(req);
+  const agents = await getAllAgents(organizationId);
 
   const agentHealth = await Promise.all(
     agents.map(async (agent) => {
@@ -779,7 +787,8 @@ app.get("/api/agents/:id/tools-catalog", async (req, res) => {
 
 // Chat send via gateway (for streaming support)
 app.post("/api/agents/:id/chat/send", wrap(async (req, res) => {
-  const agent = await getAgent(req.params.id);
+  const organizationId = getOrgId(req);
+  const agent = await getAgent(req.params.id, organizationId);
   if (!agent) return res.status(404).json({ error: "Agent not found" });
 
   const userMessage = req.body.message || req.body.text;
