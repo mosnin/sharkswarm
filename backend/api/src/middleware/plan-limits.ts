@@ -42,7 +42,7 @@ function resolveOrgId(req: Request): string | null {
   return (
     (req.params.organizationId as string) ||
     (req.headers["x-organization-id"] as string) ||
-    (req.auth?.org_id as string | undefined) ||
+    req.auth?.organizationId ||
     null
   );
 }
