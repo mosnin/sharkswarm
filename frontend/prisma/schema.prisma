@@ -80,6 +80,14 @@ model Organization {
   usageEvents        UsageEvent[]
   analyticsSummaries AnalyticsSummary[]
 
+  agents              Agent[]
+  messages            Message[]
+  tasks               Task[]
+  agentLogs           AgentLog[]
+  schedules           Schedule[]
+  backendIntegrations BackendIntegration[]
+  glorbMissions       GlorbMission[]
+
   @@index([slug])
 }
 
@@ -210,4 +218,264 @@ model AdminRecord {
   @@index([targetType, targetId])
   @@index([actorId])
   @@index([createdAt])
+}
+
+// ── Agent ───────────────────────────────────────────────────────
+
+model Agent {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  systemPrompt   String   @default("")
+  model          String   @default("openai/gpt-4.1-mini")
+  tools          String[] @default([])
+  containerId    String?
+  namespace      String?
+  status         String   @default("stopped")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  messages          Message[]
+  tasks             Task[]             @relation("TaskToAgent")
+  tasksFrom         Task[]             @relation("TaskFromAgent")
+  logs              AgentLog[]
+  schedules         Schedule[]
+  agentSpecs        GlorbAgentSpec[]
+  agentIntegrations AgentIntegration[]
+
+  @@index([organizationId])
+}
+
+// ── Message ─────────────────────────────────────────────────────
+
+model Message {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  fromAgent      String?
+  toAgent        String?  @db.Uuid
+  channel        String?
+  content        String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agent        Agent?       @relation(fields: [toAgent], references: [id])
+
+  @@index([organizationId, createdAt])
+}
+
+// ── Task ────────────────────────────────────────────────────────
+
+model Task {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  fromAgentId    String?  @db.Uuid
+  toAgentId      String?  @db.Uuid
+  message        String
+  status         String   @default("pending")
+  result         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fromAgent    Agent?       @relation("TaskFromAgent", fields: [fromAgentId], references: [id])
+  toAgent      Agent?       @relation("TaskToAgent", fields: [toAgentId], references: [id])
+
+  @@index([organizationId, status])
+}
+
+// ── AgentLog ────────────────────────────────────────────────────
+
+model AgentLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  agentId        String   @db.Uuid
+  level          String   @default("info")
+  message        String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agent        Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, agentId])
+}
+
+// ── Schedule ────────────────────────────────────────────────────
+
+model Schedule {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  agentId        String    @db.Uuid
+  name           String
+  cronExpr       String
+  message        String
+  enabled        Boolean   @default(true)
+  lastRun        DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agent        Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, enabled])
+}
+
+// ── BackendIntegration ──────────────────────────────────────────
+
+model BackendIntegration {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  description    String   @default("")
+  type           String
+  config         Json     @default("{}")
+  createdAt      DateTime @default(now())
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentBindings AgentIntegration[]
+
+  @@index([organizationId])
+}
+
+// ── AgentIntegration ────────────────────────────────────────────
+
+model AgentIntegration {
+  agentId       String @db.Uuid
+  integrationId String @db.Uuid
+
+  agent       Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  integration BackendIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, integrationId])
+}
+
+// ── GlorbMission ────────────────────────────────────────────────
+
+model GlorbMission {
+  id            String    @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  title         String
+  objective     String
+  missionType   String
+  status        String    @default("draft")
+  deadline      DateTime?
+  budgetTokens  BigInt?
+  riskLevel     String    @default("medium")
+  qualityBar    String    @default("standard")
+  policy        String    @default("balanced")
+  topologyId    String?
+  result        Json?
+  error         String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentSpecs   GlorbAgentSpec[]
+  topologies   GlorbTopology[]
+  provenance   GlorbProvenance[]
+  gateResults  GlorbGateResult[]
+
+  @@index([organizationId, status])
+}
+
+// ── GlorbAgentSpec ──────────────────────────────────────────────
+
+model GlorbAgentSpec {
+  id                String   @id @default(uuid()) @db.Uuid
+  missionId         String   @db.Uuid
+  name              String
+  roleType          String
+  purpose           String?
+  scopeIn           String?
+  scopeOut          String?
+  capabilityProfile Json?
+  toolPermissions   String[] @default([])
+  memoryScope       String   @default("mission")
+  authority         String   @default("execute")
+  autonomy          String   @default("checkpoint")
+  runtimeAgentId    String?  @db.Uuid
+  status            String   @default("drafted")
+  createdAt         DateTime @default(now())
+
+  mission      GlorbMission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  runtimeAgent Agent?       @relation(fields: [runtimeAgentId], references: [id])
+
+  @@index([missionId])
+}
+
+// ── GlorbTopology ───────────────────────────────────────────────
+
+model GlorbTopology {
+  id            String   @id @default(uuid()) @db.Uuid
+  missionId     String   @db.Uuid
+  name          String
+  leadAgentId   String?
+  topologyType  String
+  config        Json     @default("{}")
+  handoffRules  Json     @default("[]")
+  mergeRules    Json     @default("[]")
+  qualityGates  Json     @default("[]")
+  createdAt     DateTime @default(now())
+
+  mission GlorbMission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  @@index([missionId])
+}
+
+// ── GlorbMemory ─────────────────────────────────────────────────
+
+model GlorbMemory {
+  id        Int       @id @default(autoincrement())
+  layer     String
+  scopeId   String
+  key       String
+  content   Json
+  metadata  Json?
+  createdBy String?
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([layer, scopeId, key])
+  @@index([layer, scopeId])
+}
+
+// ── GlorbProvenance ─────────────────────────────────────────────
+
+model GlorbProvenance {
+  id         Int       @id @default(autoincrement())
+  missionId  String    @db.Uuid
+  eventType  String
+  agentId    String?
+  action     String?
+  input      Json?
+  output     Json?
+  confidence Float?
+  reasoning  String?
+  parentId   Int?
+  createdAt  DateTime  @default(now())
+
+  parent   GlorbProvenance?  @relation("ProvenanceChain", fields: [parentId], references: [id])
+  children GlorbProvenance[] @relation("ProvenanceChain")
+  mission  GlorbMission      @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  @@index([missionId])
+}
+
+// ── GlorbGateResult ─────────────────────────────────────────────
+
+model GlorbGateResult {
+  id          Int      @id @default(autoincrement())
+  missionId   String   @db.Uuid
+  gateType    String
+  status      String   @default("pending")
+  criteria    Json?
+  result      Json?
+  evaluatedBy String?
+  createdAt   DateTime @default(now())
+
+  mission GlorbMission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  @@index([missionId])
 }
