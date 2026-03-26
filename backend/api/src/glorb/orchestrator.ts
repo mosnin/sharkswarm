@@ -201,7 +201,7 @@ export async function compileMission(missionId: string): Promise<{
         const systemPrompt = buildAgentSystemPrompt(agentPlan, mission, plan);
 
         // Spawn real SharkSwarm agent
-        const runtimeAgent = await createAgent({
+        const runtimeAgent = await createAgent(mission.organizationId, {
           name: `[${mission.title}] ${agentPlan.name}`,
           systemPrompt,
           model: "openai/gpt-4.1-mini",
@@ -248,7 +248,7 @@ export async function compileMission(missionId: string): Promise<{
       // Clean up already-spawned agents before propagating
       for (const runtimeId of spawnedRuntimeAgentIds) {
         try {
-          await deleteAgent(runtimeId);
+          await deleteAgent(runtimeId, mission.organizationId);
         } catch {
           // best-effort cleanup
         }
@@ -424,7 +424,7 @@ export async function abortMission(missionId: string, reason: string): Promise<M
   for (const spec of agents) {
     if (spec.runtime_agent_id) {
       try {
-        await deleteAgent(spec.runtime_agent_id);
+        await deleteAgent(spec.runtime_agent_id, mission.organizationId);
       } catch {
         // agent may already be gone
       }
@@ -456,7 +456,7 @@ export async function completeMission(
   for (const spec of agents) {
     if (spec.runtime_agent_id) {
       try {
-        await deleteAgent(spec.runtime_agent_id);
+        await deleteAgent(spec.runtime_agent_id, mission.organizationId);
       } catch {
         // agent may already be gone
       }

@@ -92,6 +92,7 @@ export type ProvenanceEventType =
 
 export interface Mission {
   id: string;
+  organizationId: string;
   title: string;
   objective: string;
   mission_type: MissionType;
