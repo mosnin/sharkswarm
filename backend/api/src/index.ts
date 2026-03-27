@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
-import { query, pool } from "./db";
+import { prisma, pool } from "./db";
 import { publishToAgent } from "./redis";
 import { getAllAgents, getAgent, updateAgent, createAgent, deleteAgent, initAgentRegistry } from "./agents";
 import { glorbRouter, initGlorbSchema } from "./glorb";
@@ -18,6 +18,7 @@ import {
 } from "./integrations";
 import { requireAuth } from "./auth";
 import { getOrgId } from "./middleware/org-scope";
+import { enforceAgentLimit, enforceMissionLimit } from "./middleware/plan-limits";
 
 const app = express();
 const PORT = Number(process.env.API_PORT) || 4000;
@@ -118,7 +119,7 @@ app.get("/api/agents/:id", wrap(async (req, res) => {
   res.json(agent);
 }));
 
-app.post("/api/agents", strictLimiter, async (req, res) => {
+app.post("/api/agents", strictLimiter, enforceAgentLimit, async (req, res) => {
   const { name, systemPrompt, model, tools } = req.body;
   if (!name) return res.status(400).json({ error: "name is required" });
   try {
@@ -181,7 +182,8 @@ app.post("/api/send-message", strictLimiter, async (req, res) => {
   }
 
   try {
-    await publishToAgent("dashboard", to_agent, message);
+    const organizationId = getOrgId(req);
+    await publishToAgent("dashboard", to_agent, message, organizationId);
     // redis-bridge persists the message to Postgres — no need to insert here too
     res.json({ success: true });
   } catch (err) {
@@ -191,131 +193,143 @@ app.post("/api/send-message", strictLimiter, async (req, res) => {
 });
 
 app.get("/api/messages", wrap(async (req, res) => {
+  const organizationId = getOrgId(req);
   const limit = Number(req.query.limit) || 50;
-  const rows = await query(
-    `SELECT * FROM messages ORDER BY created_at DESC LIMIT $1`,
-    [limit]
-  );
+  const rows = await prisma.message.findMany({
+    where: { organizationId },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+  });
   res.json(rows);
 }));
 
 // --------------- Logs ---------------
 
 app.get("/api/logs", wrap(async (req, res) => {
+  const organizationId = getOrgId(req);
   const limit = Number(req.query.limit) || 50;
   const type = (req.query.type as string) || "agent_logs";
 
   if (type === "messages") {
-    const rows = await query(
-      `SELECT * FROM messages ORDER BY created_at DESC LIMIT $1`,
-      [limit]
-    );
+    const rows = await prisma.message.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
     return res.json(rows);
   }
 
-  const rows = await query(
-    `SELECT * FROM agent_logs ORDER BY created_at DESC LIMIT $1`,
-    [limit]
-  );
+  const rows = await prisma.agentLog.findMany({
+    where: { organizationId },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+  });
   res.json(rows);
 }));
 
 // --------------- Tasks ---------------
 
 app.get("/api/tasks", wrap(async (req, res) => {
+  const organizationId = getOrgId(req);
   const limit = Number(req.query.limit) || 100;
   const status = req.query.status as string | undefined;
   const agent = req.query.agent as string | undefined;
 
-  let sql = "SELECT * FROM tasks";
-  const conditions: string[] = [];
-  const params: unknown[] = [];
+  const where: Record<string, unknown> = { organizationId };
 
   if (status) {
-    params.push(status);
-    conditions.push(`status = $${params.length}`);
+    where.status = status;
   }
   if (agent) {
-    params.push(agent);
-    conditions.push(`(from_agent = $${params.length} OR to_agent = $${params.length})`);
+    where.OR = [{ fromAgentId: agent }, { toAgentId: agent }];
   }
-  if (conditions.length) sql += " WHERE " + conditions.join(" AND ");
-  sql += " ORDER BY created_at DESC";
-  params.push(limit);
-  sql += ` LIMIT $${params.length}`;
 
-  const rows = await query(sql, params);
+  const rows = await prisma.task.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: limit,
+  });
   res.json(rows);
 }));
 
 app.post("/api/tasks", wrap(async (req, res) => {
+  const organizationId = getOrgId(req);
   const { from_agent, to_agent, message } = req.body;
   if (!from_agent || !to_agent || !message) {
     return res.status(400).json({ error: "from_agent, to_agent, and message are required" });
   }
-  const rows = await query(
-    `INSERT INTO tasks (from_agent, to_agent, message) VALUES ($1, $2, $3) RETURNING *`,
-    [from_agent, to_agent, message]
-  );
-  res.status(201).json(rows[0]);
+  const task = await prisma.task.create({
+    data: {
+      organizationId,
+      fromAgentId: from_agent,
+      toAgentId: to_agent,
+      message,
+    },
+  });
+  res.status(201).json(task);
 }));
 
 app.put("/api/tasks/:id", wrap(async (req, res) => {
+  const organizationId = getOrgId(req);
   const { status, result } = req.body;
-  const rows = await query(
-    `UPDATE tasks SET status = COALESCE($1, status), result = COALESCE($2, result), updated_at = NOW()
-     WHERE id = $3 RETURNING *`,
-    [status || null, result || null, req.params.id]
-  );
-  if (!rows.length) return res.status(404).json({ error: "Task not found" });
-  res.json(rows[0]);
+
+  const data: Record<string, unknown> = {};
+  if (status !== undefined && status !== null) data.status = status;
+  if (result !== undefined && result !== null) data.result = result;
+
+  const updated = await prisma.task.updateMany({
+    where: { id: req.params.id, organizationId },
+    data,
+  });
+  if (!updated.count) return res.status(404).json({ error: "Task not found" });
+
+  const task = await prisma.task.findUnique({ where: { id: req.params.id } });
+  res.json(task);
 }));
 
 // --------------- Agent Conversation History ---------------
 
 app.get("/api/agents/:id/messages", wrap(async (req, res) => {
+  const organizationId = getOrgId(req);
   const agentId = req.params.id;
   const limit = Number(req.query.limit) || 100;
-  const rows = await query(
-    `SELECT * FROM messages
-     WHERE from_agent = $1 OR to_agent = $1
-     ORDER BY created_at ASC
-     LIMIT $2`,
-    [agentId, limit]
-  );
+  const rows = await prisma.message.findMany({
+    where: {
+      organizationId,
+      OR: [{ fromAgent: agentId }, { toAgent: agentId }],
+    },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+  });
   res.json(rows);
 }));
 
 // --------------- Enhanced Logs ---------------
 
 app.get("/api/logs/filtered", wrap(async (req, res) => {
+  const organizationId = getOrgId(req);
   const limit = Number(req.query.limit) || 100;
   const agent = req.query.agent as string | undefined;
   const level = req.query.level as string | undefined;
   const since = req.query.since as string | undefined;
 
-  let sql = "SELECT * FROM agent_logs";
-  const conditions: string[] = [];
-  const params: unknown[] = [];
+  const where: Record<string, unknown> = { organizationId };
 
   if (agent) {
-    params.push(agent);
-    conditions.push(`agent_id = $${params.length}`);
+    where.agentId = agent;
   }
   if (level) {
-    params.push(level);
-    conditions.push(`level = $${params.length}`);
+    where.level = level;
   }
   if (since) {
-    params.push(since);
-    conditions.push(`created_at >= $${params.length}::timestamptz`);
+    where.createdAt = { gte: new Date(since) };
   }
-  if (conditions.length) sql += " WHERE " + conditions.join(" AND ");
-  sql += " ORDER BY created_at DESC";
-  params.push(limit);
-  sql += ` LIMIT $${params.length}`;
 
-  const rows = await query(sql, params);
+  const rows = await prisma.agentLog.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: limit,
+  });
   res.json(rows);
 }));
 
@@ -345,18 +359,22 @@ app.get("/api/health/system", wrap(async (req, res) => {
         // offline
       }
 
-      // Last activity from messages table
-      const lastMsg = await query(
-        `SELECT created_at FROM messages WHERE from_agent = $1 OR to_agent = $1 ORDER BY created_at DESC LIMIT 1`,
-        [agent.id]
-      );
+      // Last activity from messages table — scoped to org
+      const lastMsg = await prisma.message.findFirst({
+        where: {
+          organizationId,
+          OR: [{ fromAgent: agent.id }, { toAgent: agent.id }],
+        },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      });
 
       return {
         id: agent.id,
         name: agent.name,
         status,
         latencyMs,
-        lastActivity: lastMsg.length ? (lastMsg[0] as { created_at: string }).created_at : null,
+        lastActivity: lastMsg?.createdAt ?? null,
       };
     })
   );
@@ -364,7 +382,7 @@ app.get("/api/health/system", wrap(async (req, res) => {
   // DB + Redis checks
   let dbOk = false;
   try {
-    await query("SELECT 1");
+    await prisma.$queryRaw`SELECT 1`;
     dbOk = true;
   } catch { /* */ }
 
@@ -375,63 +393,105 @@ app.get("/api/health/system", wrap(async (req, res) => {
     redisOk = pong === "PONG";
   } catch { /* */ }
 
-  // Task stats
-  const taskStats = await query(
-    `SELECT status, COUNT(*)::int as count FROM tasks GROUP BY status`
-  );
+  // Task stats — scoped to org
+  const taskStats = await prisma.task.groupBy({
+    by: ["status"],
+    where: { organizationId },
+    _count: { status: true },
+  });
 
   res.json({
     agents: agentHealth,
     infrastructure: { postgres: dbOk, redis: redisOk },
     tasks: Object.fromEntries(
-      (taskStats as { status: string; count: number }[]).map((r) => [r.status, r.count])
+      taskStats.map((r) => [r.status, r._count.status])
     ),
   });
 }));
 
 // --------------- Tool Integrations ---------------
 
-app.get("/api/integrations", wrap(async (_req, res) => {
-  res.json(await getAllIntegrations());
+app.get("/api/integrations", wrap(async (req, res) => {
+  const organizationId = getOrgId(req);
+  const rows = await prisma.backendIntegration.findMany({
+    where: { organizationId },
+    orderBy: { createdAt: "desc" },
+  });
+  res.json(rows);
 }));
 
 app.get("/api/integrations/:id", wrap(async (req, res) => {
-  const tool = await getIntegration(req.params.id);
+  const organizationId = getOrgId(req);
+  const tool = await prisma.backendIntegration.findFirst({
+    where: { id: req.params.id, organizationId },
+  });
   if (!tool) return res.status(404).json({ error: "Integration not found" });
   res.json(tool);
 }));
 
 app.post("/api/integrations", wrap(async (req, res) => {
-  const { type } = req.body;
+  const organizationId = getOrgId(req);
+  const { type, name, description, config } = req.body;
   if (!type || !["api", "mcp"].includes(type)) {
     return res.status(400).json({ error: "type must be 'api' or 'mcp'" });
   }
-  const created = await createIntegration(req.body);
+  const created = await prisma.backendIntegration.create({
+    data: {
+      organizationId,
+      name: name || "",
+      description: description || "",
+      type,
+      config: config || {},
+    },
+  });
   res.status(201).json(created);
 }));
 
 app.put("/api/integrations/:id", wrap(async (req, res) => {
-  const updated = await updateIntegration(req.params.id, req.body);
-  if (!updated) return res.status(404).json({ error: "Integration not found" });
+  const organizationId = getOrgId(req);
+  const { name, description, config } = req.body;
+
+  const data: Record<string, unknown> = {};
+  if (name !== undefined) data.name = name;
+  if (description !== undefined) data.description = description;
+  if (config !== undefined) data.config = config;
+
+  const result = await prisma.backendIntegration.updateMany({
+    where: { id: req.params.id, organizationId },
+    data,
+  });
+  if (!result.count) return res.status(404).json({ error: "Integration not found" });
+
+  const updated = await prisma.backendIntegration.findUnique({ where: { id: req.params.id } });
   res.json(updated);
 }));
 
 app.delete("/api/integrations/:id", wrap(async (req, res) => {
-  const ok = await deleteIntegration(req.params.id);
-  if (!ok) return res.status(404).json({ error: "Integration not found" });
+  const organizationId = getOrgId(req);
+  const result = await prisma.backendIntegration.deleteMany({
+    where: { id: req.params.id, organizationId },
+  });
+  if (!result.count) return res.status(404).json({ error: "Integration not found" });
   res.json({ success: true });
 }));
 
 // Test an API tool integration by making the actual HTTP call
 app.post("/api/integrations/:id/test", wrap(async (req, res) => {
-  const tool = await getIntegration(req.params.id);
+  const organizationId = getOrgId(req);
+  const tool = await prisma.backendIntegration.findFirst({
+    where: { id: req.params.id, organizationId },
+  });
   if (!tool) return res.status(404).json({ error: "Integration not found" });
+
+  const cfg = tool.config as Record<string, unknown>;
 
   if (tool.type === "api") {
     try {
       // Replace template placeholders with provided params
-      let url = tool.url;
-      let body = tool.bodyTemplate;
+      let url = (cfg.url as string) || "";
+      let body = (cfg.bodyTemplate as string) || "";
+      const method = (cfg.method as string) || "GET";
+      const headers = (cfg.headers as Record<string, string>) || {};
       const params = req.body.params || {};
       for (const [key, value] of Object.entries(params)) {
         url = url.replace(`{{${key}}}`, String(value));
@@ -441,9 +501,9 @@ app.post("/api/integrations/:id/test", wrap(async (req, res) => {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 10000);
       const r = await fetch(url, {
-        method: tool.method,
-        headers: { "Content-Type": "application/json", ...tool.headers },
-        body: tool.method !== "GET" && body ? body : undefined,
+        method,
+        headers: { "Content-Type": "application/json", ...headers },
+        body: method !== "GET" && body ? body : undefined,
         signal: ctrl.signal,
       });
       clearTimeout(timer);
@@ -457,10 +517,10 @@ app.post("/api/integrations/:id/test", wrap(async (req, res) => {
       res.json({ status: 0, ok: false, error: message });
     }
   } else if (tool.type === "mcp") {
-    // For MCP, just verify the config looks valid
+    const transport = cfg.transport as string;
     const valid =
-      (tool.transport === "stdio" && tool.command) ||
-      (["sse", "streamable-http"].includes(tool.transport) && tool.url);
+      (transport === "stdio" && cfg.command) ||
+      (["sse", "streamable-http"].includes(transport) && cfg.url);
     res.json({ ok: !!valid, status: valid ? "config_valid" : "invalid_config" });
   } else {
     res.status(400).json({ error: "Unknown integration type" });
@@ -470,74 +530,139 @@ app.post("/api/integrations/:id/test", wrap(async (req, res) => {
 // --------------- Agent ↔ Integration Bindings ---------------
 
 app.get("/api/agents/:id/integrations", wrap(async (req, res) => {
-  res.json(await getAgentIntegrations(req.params.id));
+  const organizationId = getOrgId(req);
+  // Verify the agent belongs to this org
+  const agent = await prisma.agent.findFirst({
+    where: { id: req.params.id, organizationId },
+  });
+  if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+  const bindings = await prisma.agentIntegration.findMany({
+    where: { agentId: req.params.id },
+    include: { integration: true },
+  });
+  res.json(bindings.map((b) => b.integration));
 }));
 
 app.post("/api/agents/:id/integrations", wrap(async (req, res) => {
+  const organizationId = getOrgId(req);
   const { integrationId } = req.body;
   if (!integrationId) return res.status(400).json({ error: "integrationId required" });
-  const ok = await bindIntegrationToAgent(req.params.id, integrationId);
-  if (!ok) return res.status(404).json({ error: "Integration not found" });
+
+  // Verify both agent and integration belong to this org
+  const agent = await prisma.agent.findFirst({
+    where: { id: req.params.id, organizationId },
+  });
+  if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+  const integration = await prisma.backendIntegration.findFirst({
+    where: { id: integrationId, organizationId },
+  });
+  if (!integration) return res.status(404).json({ error: "Integration not found" });
+
+  await prisma.agentIntegration.upsert({
+    where: {
+      agentId_integrationId: { agentId: req.params.id, integrationId },
+    },
+    create: { agentId: req.params.id, integrationId },
+    update: {},
+  });
   res.json({ success: true });
 }));
 
 app.delete("/api/agents/:id/integrations/:integrationId", wrap(async (req, res) => {
-  await unbindIntegrationFromAgent(req.params.id, req.params.integrationId);
+  const organizationId = getOrgId(req);
+  // Verify agent belongs to this org
+  const agent = await prisma.agent.findFirst({
+    where: { id: req.params.id, organizationId },
+  });
+  if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+  await prisma.agentIntegration.deleteMany({
+    where: { agentId: req.params.id, integrationId: req.params.integrationId },
+  });
   res.json({ success: true });
 }));
 
 // --------------- Schedules ---------------
 
-app.get("/api/schedules", wrap(async (_req, res) => {
-  const rows = await query("SELECT * FROM schedules ORDER BY created_at DESC");
+app.get("/api/schedules", wrap(async (req, res) => {
+  const organizationId = getOrgId(req);
+  const rows = await prisma.schedule.findMany({
+    where: { organizationId },
+    orderBy: { createdAt: "desc" },
+  });
   res.json(rows);
 }));
 
 app.post("/api/schedules", wrap(async (req, res) => {
+  const organizationId = getOrgId(req);
   const { name, agent_id, cron_expr, message } = req.body;
   if (!name || !agent_id || !cron_expr || !message) {
     return res.status(400).json({ error: "name, agent_id, cron_expr, and message are required" });
   }
-  const rows = await query(
-    `INSERT INTO schedules (name, agent_id, cron_expr, message) VALUES ($1, $2, $3, $4) RETURNING *`,
-    [name, agent_id, cron_expr, message]
-  );
-  res.status(201).json(rows[0]);
+  const schedule = await prisma.schedule.create({
+    data: {
+      organizationId,
+      name,
+      agentId: agent_id,
+      cronExpr: cron_expr,
+      message,
+    },
+  });
+  res.status(201).json(schedule);
 }));
 
 app.put("/api/schedules/:id", wrap(async (req, res) => {
+  const organizationId = getOrgId(req);
   const { name, agent_id, cron_expr, message, enabled } = req.body;
-  const rows = await query(
-    `UPDATE schedules
-     SET name      = COALESCE($1, name),
-         agent_id  = COALESCE($2, agent_id),
-         cron_expr = COALESCE($3, cron_expr),
-         message   = COALESCE($4, message),
-         enabled   = COALESCE($5, enabled)
-     WHERE id = $6 RETURNING *`,
-    [name ?? null, agent_id ?? null, cron_expr ?? null, message ?? null, enabled ?? null, req.params.id]
-  );
-  if (!rows.length) return res.status(404).json({ error: "Schedule not found" });
-  res.json(rows[0]);
+
+  const data: Record<string, unknown> = {};
+  if (name !== undefined) data.name = name;
+  if (agent_id !== undefined) data.agentId = agent_id;
+  if (cron_expr !== undefined) data.cronExpr = cron_expr;
+  if (message !== undefined) data.message = message;
+  if (enabled !== undefined) data.enabled = enabled;
+
+  const result = await prisma.schedule.updateMany({
+    where: { id: req.params.id, organizationId },
+    data,
+  });
+  if (!result.count) return res.status(404).json({ error: "Schedule not found" });
+
+  const schedule = await prisma.schedule.findUnique({ where: { id: req.params.id } });
+  res.json(schedule);
 }));
 
 app.delete("/api/schedules/:id", wrap(async (req, res) => {
-  await query("DELETE FROM schedules WHERE id = $1", [req.params.id]);
+  const organizationId = getOrgId(req);
+  await prisma.schedule.deleteMany({
+    where: { id: req.params.id, organizationId },
+  });
   res.json({ success: true });
 }));
 
 // Run a schedule immediately (manual trigger)
 app.post("/api/schedules/:id/run", wrap(async (req, res) => {
-  const rows = await query("SELECT * FROM schedules WHERE id = $1", [req.params.id]);
-  if (!rows.length) return res.status(404).json({ error: "Schedule not found" });
-  const schedule = rows[0] as { agent_id: string; message: string; name: string; id: number };
+  const organizationId = getOrgId(req);
+  const schedule = await prisma.schedule.findFirst({
+    where: { id: req.params.id, organizationId },
+  });
+  if (!schedule) return res.status(404).json({ error: "Schedule not found" });
 
-  await publishToAgent("scheduler", schedule.agent_id, schedule.message);
-  await query("UPDATE schedules SET last_run = NOW() WHERE id = $1", [schedule.id]);
-  await query(
-    "INSERT INTO agent_logs (agent_id, level, message) VALUES ($1, $2, $3)",
-    ["scheduler", "info", `Manual trigger: "${schedule.name}" → ${schedule.agent_id}`]
-  );
+  await publishToAgent("scheduler", schedule.agentId, schedule.message, organizationId);
+  await prisma.schedule.update({
+    where: { id: schedule.id },
+    data: { lastRun: new Date() },
+  });
+  await prisma.agentLog.create({
+    data: {
+      organizationId,
+      agentId: schedule.agentId,
+      level: "info",
+      message: `Manual trigger: "${schedule.name}" → ${schedule.agentId}`,
+    },
+  });
   res.json({ success: true });
 }));
 
@@ -549,10 +674,13 @@ import { callAgentGateway, callAllAgentsGateway } from "./gateway-proxy";
 // Generic proxy: call any gateway method on a specific agent
 app.post("/api/agents/:id/gateway/:method", async (req, res) => {
   try {
+    const organizationId = getOrgId(req);
     const result = await callAgentGateway(
       req.params.id,
       req.params.method.replace(/-/g, "."),
-      req.body
+      req.body,
+      8000,
+      organizationId
     );
     res.json({ ok: true, result });
   } catch (err: unknown) {
@@ -564,7 +692,8 @@ app.post("/api/agents/:id/gateway/:method", async (req, res) => {
 // Get agent config (openclaw.json)
 app.get("/api/agents/:id/config", async (req, res) => {
   try {
-    const result = await callAgentGateway(req.params.id, "config.get");
+    const organizationId = getOrgId(req);
+    const result = await callAgentGateway(req.params.id, "config.get", undefined, 8000, organizationId);
     res.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to get config";
@@ -575,9 +704,10 @@ app.get("/api/agents/:id/config", async (req, res) => {
 // Update agent config
 app.put("/api/agents/:id/config", async (req, res) => {
   try {
+    const organizationId = getOrgId(req);
     const result = await callAgentGateway(req.params.id, "config.patch", {
       patch: req.body,
-    });
+    }, 8000, organizationId);
     res.json({ ok: true, result });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to update config";
@@ -588,7 +718,8 @@ app.put("/api/agents/:id/config", async (req, res) => {
 // List models available to an agent
 app.get("/api/agents/:id/models", async (req, res) => {
   try {
-    const result = await callAgentGateway(req.params.id, "models.list");
+    const organizationId = getOrgId(req);
+    const result = await callAgentGateway(req.params.id, "models.list", undefined, 8000, organizationId);
     res.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to list models";
@@ -599,7 +730,8 @@ app.get("/api/agents/:id/models", async (req, res) => {
 // Get channel status for an agent
 app.get("/api/agents/:id/channels", async (req, res) => {
   try {
-    const result = await callAgentGateway(req.params.id, "channels.status");
+    const organizationId = getOrgId(req);
+    const result = await callAgentGateway(req.params.id, "channels.status", undefined, 8000, organizationId);
     res.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to get channels";
@@ -608,9 +740,10 @@ app.get("/api/agents/:id/channels", async (req, res) => {
 });
 
 // Get all channels across all agents
-app.get("/api/channels", async (_req, res) => {
+app.get("/api/channels", async (req, res) => {
   try {
-    const results = await callAllAgentsGateway("channels.status");
+    const organizationId = getOrgId(req);
+    const results = await callAllAgentsGateway("channels.status", undefined, organizationId);
     res.json(results);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to get channels";
@@ -621,7 +754,8 @@ app.get("/api/channels", async (_req, res) => {
 // Cron jobs on a specific agent
 app.get("/api/agents/:id/cron", async (req, res) => {
   try {
-    const result = await callAgentGateway(req.params.id, "cron.list");
+    const organizationId = getOrgId(req);
+    const result = await callAgentGateway(req.params.id, "cron.list", undefined, 8000, organizationId);
     res.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to list cron jobs";
@@ -631,7 +765,8 @@ app.get("/api/agents/:id/cron", async (req, res) => {
 
 app.post("/api/agents/:id/cron", async (req, res) => {
   try {
-    const result = await callAgentGateway(req.params.id, "cron.add", req.body);
+    const organizationId = getOrgId(req);
+    const result = await callAgentGateway(req.params.id, "cron.add", req.body, 8000, organizationId);
     res.json({ ok: true, result });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to add cron job";
@@ -641,10 +776,11 @@ app.post("/api/agents/:id/cron", async (req, res) => {
 
 app.put("/api/agents/:id/cron/:jobId", async (req, res) => {
   try {
+    const organizationId = getOrgId(req);
     const result = await callAgentGateway(req.params.id, "cron.update", {
       id: req.params.jobId,
       ...req.body,
-    });
+    }, 8000, organizationId);
     res.json({ ok: true, result });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to update cron job";
@@ -654,9 +790,10 @@ app.put("/api/agents/:id/cron/:jobId", async (req, res) => {
 
 app.delete("/api/agents/:id/cron/:jobId", async (req, res) => {
   try {
+    const organizationId = getOrgId(req);
     const result = await callAgentGateway(req.params.id, "cron.remove", {
       id: req.params.jobId,
-    });
+    }, 8000, organizationId);
     res.json({ ok: true, result });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to remove cron job";
@@ -666,9 +803,10 @@ app.delete("/api/agents/:id/cron/:jobId", async (req, res) => {
 
 app.post("/api/agents/:id/cron/:jobId/run", async (req, res) => {
   try {
+    const organizationId = getOrgId(req);
     const result = await callAgentGateway(req.params.id, "cron.run", {
       id: req.params.jobId,
-    });
+    }, 8000, organizationId);
     res.json({ ok: true, result });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to run cron job";
@@ -678,9 +816,10 @@ app.post("/api/agents/:id/cron/:jobId/run", async (req, res) => {
 
 app.get("/api/agents/:id/cron/:jobId/runs", async (req, res) => {
   try {
+    const organizationId = getOrgId(req);
     const result = await callAgentGateway(req.params.id, "cron.runs", {
       id: req.params.jobId,
-    });
+    }, 8000, organizationId);
     res.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to get cron runs";
@@ -691,7 +830,8 @@ app.get("/api/agents/:id/cron/:jobId/runs", async (req, res) => {
 // Skills on a specific agent
 app.get("/api/agents/:id/skills", async (req, res) => {
   try {
-    const result = await callAgentGateway(req.params.id, "skills.status");
+    const organizationId = getOrgId(req);
+    const result = await callAgentGateway(req.params.id, "skills.status", undefined, 8000, organizationId);
     res.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to get skills";
@@ -702,7 +842,8 @@ app.get("/api/agents/:id/skills", async (req, res) => {
 // Heartbeat
 app.get("/api/agents/:id/heartbeat", async (req, res) => {
   try {
-    const result = await callAgentGateway(req.params.id, "last-heartbeat");
+    const organizationId = getOrgId(req);
+    const result = await callAgentGateway(req.params.id, "last-heartbeat", undefined, 8000, organizationId);
     res.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to get heartbeat";
@@ -712,10 +853,11 @@ app.get("/api/agents/:id/heartbeat", async (req, res) => {
 
 app.post("/api/agents/:id/heartbeat", async (req, res) => {
   try {
+    const organizationId = getOrgId(req);
     const result = await callAgentGateway(req.params.id, "wake", {
       text: req.body.text || "heartbeat",
       mode: req.body.mode || "now",
-    });
+    }, 8000, organizationId);
     res.json({ ok: true, result });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to trigger heartbeat";
@@ -726,7 +868,8 @@ app.post("/api/agents/:id/heartbeat", async (req, res) => {
 // Sessions
 app.get("/api/agents/:id/sessions", async (req, res) => {
   try {
-    const result = await callAgentGateway(req.params.id, "sessions.list");
+    const organizationId = getOrgId(req);
+    const result = await callAgentGateway(req.params.id, "sessions.list", undefined, 8000, organizationId);
     res.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to list sessions";
@@ -737,9 +880,10 @@ app.get("/api/agents/:id/sessions", async (req, res) => {
 // Agent files (for .md files)
 app.get("/api/agents/:id/files", async (req, res) => {
   try {
+    const organizationId = getOrgId(req);
     const result = await callAgentGateway(req.params.id, "agents.files.list", {
       agentId: req.query.agentId as string,
-    });
+    }, 8000, organizationId);
     res.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to list files";
@@ -749,10 +893,11 @@ app.get("/api/agents/:id/files", async (req, res) => {
 
 app.get("/api/agents/:id/files/:filename", async (req, res) => {
   try {
+    const organizationId = getOrgId(req);
     const result = await callAgentGateway(req.params.id, "agents.files.get", {
       agentId: req.query.agentId as string,
       filename: req.params.filename,
-    });
+    }, 8000, organizationId);
     res.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to get file";
@@ -762,11 +907,12 @@ app.get("/api/agents/:id/files/:filename", async (req, res) => {
 
 app.put("/api/agents/:id/files/:filename", async (req, res) => {
   try {
+    const organizationId = getOrgId(req);
     const result = await callAgentGateway(req.params.id, "agents.files.set", {
       agentId: req.query.agentId as string,
       filename: req.params.filename,
       content: req.body.content,
-    });
+    }, 8000, organizationId);
     res.json({ ok: true, result });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to save file";
@@ -777,7 +923,8 @@ app.put("/api/agents/:id/files/:filename", async (req, res) => {
 // Tools catalog
 app.get("/api/agents/:id/tools-catalog", async (req, res) => {
   try {
-    const result = await callAgentGateway(req.params.id, "tools.catalog");
+    const organizationId = getOrgId(req);
+    const result = await callAgentGateway(req.params.id, "tools.catalog", undefined, 8000, organizationId);
     res.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to get tools";
@@ -796,11 +943,15 @@ app.post("/api/agents/:id/chat/send", wrap(async (req, res) => {
 
   const wsUrl = agent.internalUrl.replace(/^http/, "ws");
 
-  // Persist the user's message to Postgres
-  await query(
-    `INSERT INTO messages (from_agent, to_agent, content) VALUES ($1, $2, $3)`,
-    ["dashboard", req.params.id, userMessage]
-  );
+  // Persist the user's message to Postgres — org-scoped
+  await prisma.message.create({
+    data: {
+      organizationId,
+      fromAgent: "dashboard",
+      toAgent: req.params.id,
+      content: userMessage,
+    },
+  });
 
   // Set up SSE streaming to the client
   res.writeHead(200, {
@@ -818,13 +969,17 @@ app.post("/api/agents/:id/chat/send", wrap(async (req, res) => {
     if (!closed) {
       closed = true;
       ws.close();
-      // Persist the agent's response if we got one
+      // Persist the agent's response if we got one — org-scoped
       if (fullResponse.trim()) {
         try {
-          await query(
-            `INSERT INTO messages (from_agent, to_agent, content) VALUES ($1, $2, $3)`,
-            [req.params.id, "dashboard", fullResponse.trim()]
-          );
+          await prisma.message.create({
+            data: {
+              organizationId,
+              fromAgent: req.params.id,
+              toAgent: "dashboard",
+              content: fullResponse.trim(),
+            },
+          });
         } catch (err) {
           console.error("Failed to persist agent response:", err);
         }
@@ -879,7 +1034,7 @@ app.post("/api/agents/:id/chat/send", wrap(async (req, res) => {
 
 // --------------- GLORB Control Plane ---------------
 
-app.post("/api/glorb/missions", strictLimiter);
+app.post("/api/glorb/missions", strictLimiter, enforceMissionLimit);
 app.use("/api/glorb", glorbRouter);
 
 // --------------- Start ---------------
